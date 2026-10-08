@@ -34,6 +34,8 @@
     python3 tools/kb.py map                   нарисовать карту процессов: _map.svg (картинка) и _map.html (интерактивная схема)
                                               со статусами, владельцами, вопросами и декомпозитами каждого шага
     python3 tools/kb.py after-merge           assign-ids + index: то, что делает CI после слияния (для соло-режима без CI)
+    python3 tools/kb.py activity [--since <дата|хеш|7д>] [--until <дата>] [--who <имя>] [--html <файл>]
+                                              кто что делал за период и сигналы процесса — для руководителя (по истории git)
     python3 tools/kb.py report [--with-materials]
                                               архив kb-report-<дата>.zip: база знаний, FEEDBACK.md и история git — чтобы отдать на разбор
 
@@ -1573,6 +1575,10 @@ def main(argv: list[str]) -> int:
         return cmd_map()
     if cmd == "after-merge":
         return cmd_after_merge()
+    if cmd == "activity":
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import kb_activity
+        return kb_activity.run(args, sys.modules[__name__])
     if cmd == "report":
         return cmd_report("--with-materials" in args)
     print(__doc__)
