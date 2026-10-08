@@ -1,0 +1,35 @@
+# База знаний: проверка на каждом MR, номера и сводки после слияния в основную ветку.
+# Задача kb-after-merge должна выполняться строго по одной (resource_group).
+# Нужен токен с правом push: переменная KB_PUSH_TOKEN (Settings → CI/CD → Variables).
+
+stages: [check, after-merge]
+
+kb-check:
+  stage: check
+  image: python:3.12-slim
+  script:
+    - python3 tools/kb.py check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+kb-after-merge:
+  stage: after-merge
+  image: python:3.12-slim
+  resource_group: kb-main
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git > /dev/null
+    - git config user.name "CI"
+    - git config user.email "ci@local"
+    - git checkout -B "$CI_COMMIT_BRANCH" "origin/$CI_COMMIT_BRANCH"
+    - git pull --rebase origin "$CI_COMMIT_BRANCH"
+  script:
+    - python3 tools/kb.py after-merge
+    - python3 tools/kb.py check
+    - |
+      if [ -n "$(git status --porcelain)" ]; then
+        git add -A
+        git commit -m "kb: номера и сводки [skip ci]"
+        git push "https://oauth2:${KB_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "HEAD:$CI_COMMIT_BRANCH"
+      fi
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
