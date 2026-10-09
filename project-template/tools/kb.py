@@ -9,16 +9,21 @@
     python3 tools/kb.py new assumption <slug> создать допущение A-new-<slug>
     python3 tools/kb.py new decision <slug>   создать решение D-new-<slug>
     python3 tools/kb.py new risk <slug>       создать риск R-new-<slug>
+    python3 tools/kb.py new step <slug> шаг="…" [порядок=… "главный объект=…" системы=[…] "Зачем этот шаг бизнесу=…"]
+                                              создать файл шага PM-XX (аналитик, kb-map); номер — следующий свободный
+    python3 tools/kb.py new system <slug> система="…" ["Роль в продукте=…"]
+                                              создать файл системы SYS-XX
     python3 tools/kb.py new question <slug> поле=значение … Раздел=текст …
                                               создать и сразу заполнить: тип=… раздел=PM-04 заголовок="…" Контекст="…"
     python3 tools/kb.py ready                 руты, готовые к взятию, по приоритету
     python3 tools/kb.py take <PM-XX|SYS-XX>   взять рут или систему себе (проверяет готовность и лимит)
-    python3 tools/kb.py release <PM-XX> "<почему>"
-                                              вернуть рут в «Готов к взятию»
+    python3 tools/kb.py release <PM-XX|SYS-XX> "<почему>"
+                                              вернуть рут в «Готов к взятию» или отпустить систему
     python3 tools/kb.py ready-check <PM-XX>   готов ли шаг к взятию: что ещё должен заполнить аналитик
     python3 tools/kb.py whoami                кто я: роли, режим, мои руты, вопросы, допущения, риски
     python3 tools/kb.py set <ID|файл> поле=значение …
-                                              поменять поле шапки с проверкой допустимых значений (статус, тип…)
+                                              поменять поле шапки с проверкой допустимых значений (статус, тип…);
+                                              статус рута — только на следующий по порядку, назад — с --force "причина"
     python3 tools/kb.py append <ID|файл> "<Раздел>" "<строка>"
                                               дописать строку в раздел (Подписчики, Уточнения, История, Ответ, разделы шага)
     python3 tools/kb.py fact <PM-XX|SYS-XX> "<Раздел>" "<текст>" "<источник>" <статус>
@@ -68,7 +73,24 @@ ROOT = Path(__file__).resolve().parent.parent
 # KB_TODAY=ГГГГ-ММ-ДД подменяет сегодняшнюю дату (для тестов и симуляций).
 TODAY = dt.date.fromisoformat(os.environ["KB_TODAY"]) if os.environ.get("KB_TODAY") else dt.date.today()
 
-SLUG = r"[0-9a-zа-яё]+(?:-[0-9a-zа-яё]+)*"
+SLUG = r"[0-9a-z]+(?:-[0-9a-z]+)*"
+TRANSLIT = {"а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo", "ж": "zh", "з": "z", "и": "i", "й": "j",
+            "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t", "у": "u", "ф": "f",
+            "х": "h", "ц": "c", "ч": "ch", "ш": "sh", "щ": "shch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+            "ә": "a", "ғ": "g", "қ": "q", "ң": "n", "ө": "o", "ұ": "u", "ү": "u", "һ": "h", "і": "i"}
+# Заглушка шаблона: <кто>, <путь в materials/>, <…>. Сравнение «сумма <100 и остаток >0» заглушкой не считается.
+TEMPLATE_PH_RE = re.compile(r"<(?:[A-Za-zА-Яа-яЁё…][^<>]*)?>")
+
+
+def slugify(s: str) -> str:
+    s = s.strip().lower()
+    s = "".join(TRANSLIT.get(ch, ch) for ch in s)
+    s = re.sub(r"[^0-9a-z]+", "-", s).strip("-")
+    return s
+
+
+def has_placeholder(line: str) -> bool:
+    return bool(TEMPLATE_PH_RE.search(line))
 ID_RE = re.compile(
     r"(?<![\w-])("
     r"GD-PM-\d{2}-\d{3}"
@@ -216,7 +238,13 @@ def meaningful_lines(text: str):
     lines = text.splitlines()
     in_fm = bool(lines) and lines[0].strip() == "---"
     in_comment = False
+    in_code = False
     for n, line in enumerate(lines, 1):
+        if not in_fm and line.lstrip().startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code:
+            continue
         if in_fm:
             if n > 1 and line.strip() == "---":
                 in_fm = False
@@ -271,6 +299,14 @@ def cmd_check() -> int:
             for key in spec["required"]:
                 if key not in fm or fm[key] in ("", []):
                     errors.append(f"{where}: не заполнено поле «{key}»")
+                elif isinstance(fm[key], str) and has_placeholder(fm[key]):
+                    errors.append(f"{where}: поле «{key}» не заполнено — осталась заглушка шаблона «{fm[key][:40]}»")
+            if kind in ("question", "assumption", "decision", "risk"):
+                for key, val in fm.items():
+                    if isinstance(val, str) and has_placeholder(val) and key not in spec["required"]:
+                        errors.append(f"{where}: поле «{key}» не заполнено — заглушка «{val[:40]}»")
+                if has_placeholder(first_heading(it["text"])):
+                    errors.append(f"{where}: заголовок не заполнен — «{first_heading(it['text'])[:50]}»")
             ident = fm.get("id", "")
             if isinstance(ident, str) and ident:
                 if not re.match(spec["id"], ident):
@@ -311,22 +347,18 @@ def cmd_check() -> int:
                         errors.append(f"{rel(p)}:{n}: ссылка на {ref}, а такого объекта нет")
 
     # похоже на персональные данные — предупреждение
-    for base in ("materials", "datasets", "context", "journal", "product.md"):
-        for p in ([ROOT / base] if (ROOT / base).is_file() else (ROOT / base).rglob("*")):
-            if not p.is_file() or p.suffix.lower() not in (".md", ".csv", ".tsv", ".txt", ".json", ".py", ".sql", ".xml") \
-                    or p.name.startswith("_template"):
-                continue
-            try:
-                txt = p.read_text(encoding="utf-8")
-            except (UnicodeDecodeError, OSError):
-                continue
-            for kind_pd, rx in PD_PATTERNS:
-                m = rx.search(txt)
-                if m:
-                    line = txt.count("\n", 0, m.start()) + 1
-                    warnings.append(f"{rel(p)}:{line}: похоже на персональные данные ({kind_pd}) — обезличьте: "
-                                    f"замените на вымышленные или маску, например 3140590*******")
-                    break
+    for p, txt in text_files():
+        parts = p.relative_to(ROOT).parts
+        if parts[0] in DOC_DIRS or p.name.startswith("_template") or p.name in ("README.md", "AGENTS.md", "CLAUDE.md") \
+                or p.suffix.lower() not in (".md", ".csv", ".tsv", ".txt", ".json", ".py", ".sql", ".xml", ".yaml", ".yml", ".log"):
+            continue
+        for kind_pd, rx in PD_PATTERNS:
+            m = rx.search(txt)
+            if m:
+                line = txt.count("\n", 0, m.start()) + 1
+                msg = f"{rel(p)}:{line}: похоже на персональные данные ({kind_pd}) — {PD_MASK_HINT}"
+                (errors if parts[0] in PD_STRICT_DIRS else warnings).append(msg)
+                break
 
     # формат фактов в шагах: «текст (источник, статус)»
     for it in all_items["step"]:
@@ -334,7 +366,7 @@ def cmd_check() -> int:
             body = section_text(it["text"], sec)
             for line in body.splitlines():
                 t = line.strip()
-                if not re.match(r"^(-|\d+\.)\s+\S", t) or "<" in t:
+                if not re.match(r"^(-|\d+\.)\s+\S", t) or has_placeholder(t):
                     continue
                 if not FACT_STATUS_RE.search(t):
                     warnings.append(f"{rel(it['path'])} «{sec}»: факт без статуса в скобках — «{t[:70]}»")
@@ -399,25 +431,32 @@ def cmd_check() -> int:
     return 1 if errors else 0
 
 
-def first_table(text: str) -> list[list[str]]:
-    """Строки данных первой таблицы в тексте (без шапки и разделителя)."""
+def first_table(text: str, header: str | None = None) -> list[list[str]]:
+    """Строки данных первой таблицы в тексте (без шапки и разделителя).
+    header — первая ячейка шапки нужной таблицы, например «Имя»; без него — первая таблица."""
     rows, started = [], False
     for line in text.splitlines():
         if line.startswith("|"):
-            started = True
-            rows.append([c.strip() for c in line.strip().strip("|").split("|")])
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if not started:
+                if header and cells[0] != header:
+                    continue
+                started = True
+            rows.append(cells)
         elif started:
             break
     return rows[2:]
 
 
 PD_PATTERNS = [
-    ("ПИНФЛ — 14 цифр", re.compile(r"(?<![\d*])\d{14}(?![\d*])")),
-    ("ИИН/БИН — 12 цифр", re.compile(r"(?<![\d*-])\d{12}(?![\d*-])")),
-    ("номер карты", re.compile(r"(?<!\d)(?:\d{4}[ -]){3}\d{4}(?!\d)")),
-    ("телефон", re.compile(r"(?<!\d)\+?(?:7|998)[ -(]*\d{2,3}[ -)]*\d{3}[ -]?\d{2}[ -]?\d{2}(?!\d)")),
-    ("паспорт", re.compile(r"(?i)паспорт[^\n]{0,15}\b[A-ZА-Я]{2}\s?\d{7}\b")),
+    ("ПИНФЛ — 14 цифр", re.compile(r"(?<![\d*.\w])\d{14}(?![\d*.\w])")),
+    ("ИИН/БИН — 12 цифр", re.compile(r"(?<![\d*.\w-])\d{12}(?![\d*.\w-])")),
+    ("номер карты", re.compile(r"(?<!\d)(?:\d{4}[ -]?){3}\d{4}(?!\d)")),
+    ("телефон", re.compile(r"(?<![\d\w])(?:\+?(?:7|998)|8)[\s\-(]*\d{2,3}[\s\-)]*\d{3}[\s-]?\d{2}[\s-]?\d{2}(?![\d\w])")),
+    ("паспорт", re.compile(r"(?i)паспорт[^\n]{0,15}\b[A-ZА-Я]{1,2}\s?\d{7}\b")),
 ]
+PD_MASK_HINT = "замените на маску: оставьте первые 3–4 знака, остальное — звёздочки, например +7 701 ***-**-** или 3140590*******"
+PD_STRICT_DIRS = ("materials", "datasets", "inbox")   # здесь персональные данные — ошибка, не предупреждение
 FACT_SECTIONS = ["Как сейчас", "Объём и время", "Правила", "Исключения", "Боль"]
 FACT_STATUS_RE = re.compile(r"[,(]\s*(подтверждено|оценка|допущение\s+A-[\w-]+|противоречие)\b")
 FACT_STATUSES = ("подтверждено", "оценка", "противоречие")
@@ -427,7 +466,7 @@ def team_names() -> set[str] | None:
     p = ROOT / "team.md"
     if not p.exists():
         return None
-    return {r[0] for r in first_table(body_of(p.read_text(encoding="utf-8"))) if r and r[0] and not r[0].startswith("<")}
+    return {r[0] for r in first_table(body_of(p.read_text(encoding="utf-8")), "Имя") if r and r[0] and not r[0].startswith("<")}
 
 
 # ---------- index ----------
@@ -543,9 +582,9 @@ def cmd_new(kind: str, slug: str) -> int:
     if kind not in TEMPLATES:
         print(f"Неизвестный вид: {kind}. Можно: {', '.join(TEMPLATES)}")
         return 2
-    slug = slug.strip().lower()
+    slug = slugify(slug)
     if not re.fullmatch(SLUG, slug):
-        print("Короткое имя — это часть ID, а не имя человека: строчные буквы, цифры и дефисы, например «istochnik-dolga»")
+        print("Короткое имя — это часть ID, а не имя человека: латиница, цифры и дефисы, например «istochnik-dolga»")
         return 2
     tpl, folder, prefix = TEMPLATES[kind]
     temp_id = f"{prefix}-new-{slug}"
@@ -565,9 +604,76 @@ def cmd_new(kind: str, slug: str) -> int:
     return 0
 
 
+def next_free_id(prefix: str, kind: str) -> str:
+    used = [int(m.group(1)) for it in load(kind)
+            if (m := re.match(rf"^{prefix}-(\d{{2}})$", str(it["fm"].get("id", ""))))]
+    return f"{prefix}-{max(used, default=0) + 1:02d}"
+
+
+def cmd_new_step_or_system(kind: str, slug: str, extra: list[str]) -> int:
+    """new step <slug> шаг="…" [порядок=… "главный объект=…" системы=[…] "Зачем этот шаг бизнесу=…"]
+       new system <slug> система="…" ["Роль в продукте=…"]"""
+    if not re.fullmatch(SLUG, slug):
+        print("Короткое имя файла — латиница, цифры и дефисы: «sopostavlenie-oplat»")
+        return 2
+    fields, sections, title, bad = parse_pairs(extra)
+    if bad:
+        for b in bad:
+            print(f"ОШИБКА  не понял аргумент «{b}» — нужен вид поле=значение")
+        return 1
+    if kind == "step":
+        name_key, tpl, folder, prefix, heading_ph = "шаг", "context/process/_template.md", "context/process", "PM", "# PM-XX <Шаг>"
+    else:
+        name_key, tpl, folder, prefix, heading_ph = "система", "context/systems/_template.md", "context/systems", "SYS", "# SYS-XX <Система>"
+    name = fields.pop(name_key, None)
+    if not name:
+        print(f"ОШИБКА  нужно название: {name_key}=\"…\"")
+        return 1
+    ident = next_free_id(prefix, kind)
+    target = ROOT / folder / f"{ident}-{slug}.md"
+    if target.exists():
+        print(f"Уже есть: {rel(target)}")
+        return 1
+    text = (ROOT / tpl).read_text(encoding="utf-8")
+    text = re.sub(rf"^id: {prefix}-XX.*$", f"id: {ident}", text, count=1, flags=re.M)
+    text = re.sub(rf"^{name_key}:.*$", f"{name_key}: {name}", text, count=1, flags=re.M)
+    text = text.replace(heading_ph, f"# {ident} {name}", 1)
+    if kind == "step":
+        main_obj = None
+        mp = ROOT / "context/process/_map.md"
+        if mp.exists():
+            obj = section_text(mp.read_text(encoding="utf-8"), "Главный объект").strip().splitlines()
+            main_obj = re.sub(r"\s*\(.*$", "", obj[0]).rstrip(".") if obj and not has_placeholder(obj[0]) else None
+        if main_obj and "главный объект" not in fields:
+            fields["главный объект"] = main_obj
+        for k in ("порядок", "главный объект", "приоритет", "людей"):
+            if k in fields and has_placeholder(fields[k]):
+                fields.pop(k)
+    text, errs = set_fields(text, kind, fields)
+    for h, v in sections.items():
+        text, ok = put_section(text, h, v, append=False)
+        if not ok:
+            errs.append(f"нет раздела «{h}»")
+    if errs:
+        for e in errs:
+            print(f"ОШИБКА  {e}")
+        print("Файл не создан — исправьте и повторите команду целиком.")
+        return 1
+    write(target, text)
+    left = [k for k in ("порядок", "главный объект") if kind == "step" and has_placeholder(str(parse_frontmatter(text).get(k, "")))]
+    print(f"{rel(target)}  ({ident})" + (f" — ещё заполнить в шапке: {', '.join(left)}" if left else ""))
+    if kind == "step":
+        print("Не забудьте: строка в таблицу «Шаги» и узел на схеме в context/process/_map.md.")
+    return 0
+
+
 # ---------- assign-ids ----------
 
 def cmd_assign_ids() -> int:
+    stale = apply_renames({k: v for k, v in known_renames().items()
+                           if not any(True for _ in ROOT.glob(f"journal/*/{k}*.md"))})
+    if stale:
+        print(f"Ссылки на уже переименованные ID исправлены в файлах: {stale}")
     renames: dict[str, tuple[Path, str, Path]] = {}
     for kind, (_, folder, prefix) in TEMPLATES.items():
         items = load(kind)
@@ -585,21 +691,50 @@ def cmd_assign_ids() -> int:
     if not renames:
         print("Временных ID нет")
         return 0
-    pattern = re.compile(r"(?<![\w-])(" + "|".join(re.escape(k) for k in sorted(renames, key=len, reverse=True)) + r")(?![\w-])")
-    changed = 0
-    for p, text in text_files():
-        parts = p.relative_to(ROOT).parts
-        if parts[0] in DOC_DIRS or p.name in ("README.md", "AGENTS.md") or "_template" in parts or p.name.startswith("_template"):
-            continue
-        new_text = pattern.sub(lambda m: renames[m.group(1)][1], text)
-        if new_text != text:
-            write(p, new_text)
-            changed += 1
+    mapping = {old: (new, path.name, target.name) for old, (path, new, target) in renames.items()}
+    changed = apply_renames(mapping)
     for old, (path, new, target) in renames.items():
         path.rename(target)
         print(f"{old} → {new}  ({rel(target)})")
+    log = ROOT / "journal" / "_renames.tsv"
+    with log.open("a", encoding="utf-8", newline="\n") as f:
+        for old, (path, new, target) in renames.items():
+            f.write(f"{old}\t{new}\t{path.name}\t{target.name}\n")
     print(f"Обновлено файлов со ссылками: {changed}")
     return 0
+
+
+def known_renames() -> dict[str, tuple[str, str, str]]:
+    log = ROOT / "journal" / "_renames.tsv"
+    out = {}
+    if log.exists():
+        for line in log.read_text(encoding="utf-8").splitlines():
+            parts = line.split("\t")
+            if len(parts) == 4:
+                out[parts[0]] = (parts[1], parts[2], parts[3])
+    return out
+
+
+def apply_renames(mapping: dict[str, tuple[str, str, str]]) -> int:
+    """Заменить временные ID на постоянные во всех файлах: сначала имена файлов (пути), потом голые ID."""
+    if not mapping:
+        return 0
+    keys = sorted(mapping, key=len, reverse=True)
+    path_pat = re.compile("|".join(re.escape(mapping[k][1]) for k in keys))
+    id_pat = re.compile(r"(?<![\w-])(" + "|".join(re.escape(k) for k in keys) + r")(?![\w-])")
+    by_file = {mapping[k][1]: mapping[k][2] for k in keys}
+    changed = 0
+    for p, text in text_files():
+        parts = p.relative_to(ROOT).parts
+        if parts[0] in DOC_DIRS or p.name in ("README.md", "AGENTS.md") or "_template" in parts or p.name.startswith("_template") \
+                or p.name == "_renames.tsv":
+            continue
+        new_text = path_pat.sub(lambda m: by_file[m.group(0)], text)
+        new_text = id_pat.sub(lambda m: mapping[m.group(1)][0], new_text)
+        if new_text != text:
+            write(p, new_text)
+            changed += 1
+    return changed
 
 
 # ---------- refs ----------
@@ -625,7 +760,7 @@ def team_info() -> tuple[dict, dict[str, str]]:
     if not p.exists():
         return {}, {}
     text = p.read_text(encoding="utf-8")
-    roles = {r[0]: (r[1] if len(r) > 1 else "") for r in first_table(body_of(text)) if r and r[0] and not r[0].startswith("<")}
+    roles = {r[0]: (r[1] if len(r) > 1 else "") for r in first_table(body_of(text), "Имя") if r and r[0] and not r[0].startswith("<")}
     return parse_frontmatter(text), roles
 
 
@@ -778,7 +913,7 @@ def cmd_similar(queries: list[str], top: int = 6) -> int:
             seen.add(p)
             for n, line in meaningful_lines(p.read_text(encoding="utf-8")):
                 t = line.strip()
-                if len(t) > 12 and not t.startswith(("#", "|---", "---")):
+                if len(t) > 12 and not t.startswith(("#", "|---", "---")) and not has_placeholder(t):
                     units.append(("fact", f"{rel(p)}:{n}: {t[:220]}", t))
     df: dict[str, int] = {}
     unit_stems = []
@@ -815,16 +950,22 @@ EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 def resolve_since(since: str) -> str:
     """Хеш коммита или дата («2026-10-12 09:00»): для даты — последний коммит до неё, иначе пустое дерево."""
-    r = subprocess.run(["git", "rev-parse", "--verify", "--quiet", since + "^{commit}"], cwd=ROOT,
+    r = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "--end-of-options", since + "^{commit}"], cwd=ROOT,
                        capture_output=True, text=True, encoding="utf-8")
     if r.returncode == 0 and r.stdout.strip():
         return r.stdout.strip()
-    r = subprocess.run(["git", "rev-list", "-1", f"--before={since}", "HEAD"], cwd=ROOT,
+    r = subprocess.run(["git", "rev-list", "-1", f"--before={since}", "--end-of-options", "HEAD"], cwd=ROOT,
                        capture_output=True, text=True, encoding="utf-8")
     return r.stdout.strip() or EMPTY_TREE
 
 
 def cmd_changes(since: str, only: str | None = None) -> int:
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?", since.strip()):
+        r = subprocess.run(["git", "rev-parse", "--verify", "--quiet", "--end-of-options", since + "^{commit}"], cwd=ROOT,
+                           capture_output=True, text=True, encoding="utf-8")
+        if r.returncode != 0:
+            print(f"Не найден коммит {since}. Нужен хеш из git log или дата ГГГГ-ММ-ДД")
+            return 1
     since = resolve_since(since)
     try:
         rng = "HEAD" if since == EMPTY_TREE else f"{since}..HEAD"
@@ -866,8 +1007,8 @@ def cmd_peek(path: str, rows: int = 10) -> int:
     p = Path(path)
     if not p.is_absolute():
         p = (Path.cwd() / p)
-    if not p.exists():
-        print(f"Нет файла {path}")
+    if not p.is_file():
+        print(f"Нет файла {path}" if not p.exists() else f"{path} — это папка, нужен файл")
         return 1
     size = p.stat().st_size
     print(f"== {path}: {size / 1024:.1f} КБ")
@@ -877,7 +1018,11 @@ def cmd_peek(path: str, rows: int = 10) -> int:
         except ImportError:
             print("Для Excel нужен openpyxl (pip install openpyxl) или сохраните лист в CSV")
             return 1
-        wb = openpyxl.load_workbook(p, read_only=True, data_only=True)
+        try:
+            wb = openpyxl.load_workbook(p, read_only=True, data_only=True)
+        except Exception as e:  # битый файл, не zip, защищён паролем
+            print(f"Не удалось открыть как Excel: {e}. Сохраните лист в CSV")
+            return 1
         for ws in wb.worksheets:
             data = [["" if v is None else str(v) for v in r] for r in ws.iter_rows(values_only=True)]
             print(f"\n-- лист «{ws.title}»")
@@ -1015,9 +1160,13 @@ def resolve(ident: str) -> Path | None:
         for it in load(kind):
             if it["fm"].get("id") == ident:
                 return it["path"]
-    hits = [x for x in ROOT.glob(f"journal/*/{ident}*.md") if not x.name.startswith("_")]
-    exact = [x for x in hits if parse_frontmatter(x.read_text(encoding="utf-8")).get("id") == ident]
-    return (exact or hits or [None])[0]
+    if re.match(r"^[QADR]-(\d{3}|new-[\w-]+)$", ident):
+        hits = sorted(x for x in ROOT.glob(f"journal/*/{ident}-*.md") if not x.name.startswith("_"))
+        hits += sorted(x for x in ROOT.glob(f"journal/*/{ident}.md") if x not in hits)
+        exact = [x for x in hits if parse_frontmatter(x.read_text(encoding="utf-8")).get("id") == ident]
+        if exact:
+            return exact[0]
+    return None
 
 
 def kind_of(path: Path) -> str | None:
@@ -1038,6 +1187,9 @@ def set_fields(text: str, kind: str | None, pairs: dict[str, str]) -> tuple[str,
     head, rest = text[:end], text[end:]
     for k, v in pairs.items():
         spec = KINDS.get(kind or "", {})
+        if not v.strip():
+            errs.append(f"поле «{k}»: пустое значение")
+            continue
         if k == "статус" and spec.get("statuses") and v.split()[0] not in spec["statuses"] and v not in spec["statuses"]:
             errs.append(f"статус «{v}» не из списка: {', '.join(spec['statuses'])}")
             continue
@@ -1070,7 +1222,7 @@ def put_section(text: str, heading: str, value: str, append: bool) -> tuple[str,
     if heading in LABEL_SECTIONS:  # «Рождается: <…>» — подписи полей, их не трогаем
         keep = [l for l in lines if not re.match(r"^\s*(-|\d+\.)\s*<", l)]
     else:
-        keep = [l for l in lines if not re.search(r"<[^>]{1,}>", l)]
+        keep = [l for l in lines if not has_placeholder(l)]
     if not append:
         keep = [l for l in keep if not re.match(r"^\s*(-|\d+\.)\s", l)] if heading in ("Подписчики", "Уточнения", "История") else \
             [l for l in keep if l.startswith(("|", "Все места", "Заполняет", "Как главный", "Кто тоже", "Нюансы", "Одна строка"))]
@@ -1078,7 +1230,7 @@ def put_section(text: str, heading: str, value: str, append: bool) -> tuple[str,
     return text[:m.start(1)] + body + "\n\n" + text[m.end(1):], True
 
 
-LABEL_SECTIONS = {"Данные", "Вход и выход"}
+LABEL_SECTIONS = {"Данные", "Вход и выход", "Что отдаёт и что принимает"}
 QUESTION_TYPES = ("понимание", "бизнес-правило", "факт о системе", "решение", "скоуп")
 
 
@@ -1100,7 +1252,9 @@ def parse_pairs(args: list[str]) -> tuple[dict, dict, str | None, list[str]]:
 
 
 def cmd_new_filled(kind: str, slug: str, extra: list[str]) -> int:
-    slug = slug.strip().lower()
+    slug = slugify(slug)
+    if kind in ("step", "system"):
+        return cmd_new_step_or_system(kind, slug, extra)
     if not extra:
         return cmd_new(kind, slug)
     import contextlib, io
@@ -1141,12 +1295,34 @@ def cmd_set(ident: str, extra: list[str]) -> int:
     if not path:
         print(f"Не найден {ident}")
         return 1
+    force = None
+    if "--force" in extra:
+        i = extra.index("--force")
+        force = extra[i + 1] if i + 1 < len(extra) else ""
+        extra = extra[:i] + extra[i + 2:]
     fields, _, _, bad = parse_pairs(extra)
     if fields.get("статус") == "Готов к взятию" and kind_of(path) == "step":
         miss = ready_missing(path.read_text(encoding="utf-8"))
         if miss:
             print("ОШИБКА  шаг не готов к взятию:\n" + "\n".join(f"  - {m}" for m in miss))
             return 1
+    if "статус" in fields and kind_of(path) == "step":
+        cur = parse_frontmatter(path.read_text(encoding="utf-8")).get("статус", "")
+        new = fields["статус"]
+        flow = KINDS["step"]["statuses"]
+        if cur in flow and new in flow and cur != new:
+            ci, ni = flow.index(cur), flow.index(new)
+            back = ni < ci
+            skip = ni > ci + 1
+            if (back or skip) and not force:
+                how = "назад" if back else f"через {ni - ci - 1} статус(а)"
+                print(f"ОШИБКА  «{cur}» → «{new}» — это {how}. Порядок: {' → '.join(flow)}. "
+                      f"Осознанно — добавьте --force \"причина\": она запишется в «Приёмка рута».")
+                return 1
+            if (back or skip) and force is not None:
+                note = f"- {TODAY}: статус {cur} → {new} ({git_user()}): {force or 'без причины'}"
+                text0, _ = put_section(path.read_text(encoding="utf-8"), "Приёмка рута", note, append=True)
+                write(path, text0)
     text, errs = set_fields(path.read_text(encoding="utf-8"), kind_of(path), fields)
     if errs or bad:
         for e in errs + [f"не понял «{b}»" for b in bad]:
@@ -1239,8 +1415,18 @@ def cmd_whoami() -> int:
              and AWAIT_OWNER in section_text(q["text"], "Ответ")]
     if moved:
         print("Ответы ждут переноса в ваш шаг (/kb-answer): \n  " + "\n  ".join(moved))
+    if "аналитик" in roles.get(user, ""):
+        owners = {it["fm"].get("id"): pair_of(it["fm"]) for it in load("step")}
+        orphan = [f"{q['fm'].get('id')} [{q['fm'].get('раздел')}] {first_heading(q['text'])}" for q in load("question")
+                  if q["fm"].get("статус") == "отвечен" and AWAIT_OWNER in section_text(q["text"], "Ответ")
+                  and (q["fm"].get("раздел") in ("ROOT", "", None) or not owners.get(q["fm"].get("раздел")))]
+        if orphan:
+            print("Ответы без хозяина — карточка продукта и руты без владельца, переносит аналитик (/kb-answer):\n  "
+                  + "\n  ".join(orphan))
     al = [f"{a['fm'].get('id')} до {a['fm'].get('проверить до')} [{a['fm'].get('статус')}]" for a in load("assumption")
-          if a["fm"].get("статус") in ("открыто", "просрочено") and (user in str(a["fm"].get("принял", "")) or user in str(a["fm"].get("кто проверяет", "")))]
+          if a["fm"].get("статус") in ("открыто", "просрочено")
+          and (re.search(rf"(?<![\w-]){re.escape(user)}(?![\w-])", str(a["fm"].get("принял", "")))
+               or re.search(rf"(?<![\w-]){re.escape(user)}(?![\w-])", str(a["fm"].get("кто проверяет", ""))))]
     print("Мои допущения: " + (", ".join(al) or "—"))
     rl = [f"{r['fm'].get('id')} [{r['fm'].get('статус')}]" for r in load("risk") if r["fm"].get("следит") == user and r["fm"].get("статус") in ("открыт", "случился")]
     print("Риски, за которыми слежу: " + (", ".join(rl) or "—"))
@@ -1322,8 +1508,8 @@ def ready_missing(step_text: str) -> list[str]:
     if not items:
         miss.append("«Материалы и контакты» — хотя бы один материал: «- materials/… — что в нём»")
     for l in items:
-        m = re.search(r"(materials/\S+?)(?=[\s,;—)]|$)", l)
-        if m and not (ROOT / m.group(1)).exists():
+        m = re.search(r"(materials/.+?)(?=\s+[—-]\s|\s*$|[,;)])", l)
+        if m and not (ROOT / m.group(1).strip("` ")).exists():
             miss.append(f"«Материалы и контакты» — нет файла {m.group(1)}")
     contact = next((l for l in mat.splitlines() if l.startswith("Кто отвечает в бизнесе")), "")
     if not contact or is_placeholder(contact):
@@ -1397,6 +1583,7 @@ def cmd_ready() -> int:
 
 
 def cmd_take(ident: str, force: bool) -> int:
+    ident = ident.strip().upper()
     user = git_user()
     _, roles = team_info()
     if user not in roles:
@@ -1412,9 +1599,12 @@ def cmd_take(ident: str, force: bool) -> int:
         if owner not in UNASSIGNED and not is_placeholder(owner) and owner != user:
             print(f"ОШИБКА  {ident} уже у {owner}")
             return 1
-        text, _ = set_fields(text, "system", {"владелец раздела в пуле": user})
+        text, errs = set_fields(text, "system", {"владелец раздела в пуле": user})
+        if errs:
+            print("ОШИБКА  " + "; ".join(errs))
+            return 1
         write(path, text)
-        print(f"{ident}: владелец раздела — {user}. Коммит: «{ident}: взял(а) раздел» и сразу push.")
+        print(f"{ident}: владелец раздела — {user}. Коммит вместе с рутом или отдельно: «{ident}: взял(а) раздел».")
         return 0
     it = step_by_id(ident)
     if not it:
@@ -1430,24 +1620,31 @@ def cmd_take(ident: str, force: bool) -> int:
     over = ident != "PM-00" and len(mine) >= wip_limit() and not force
     limit_msg = (f"ОШИБКА  у вас уже в работе {', '.join(mine)} — лимит {wip_limit()}. Сначала доведите до приёмки "
                  f"или верните: python3 tools/kb.py release <ID> \"почему\"")
-    push_msg = ("Сразу коммит прямо в основную ветку и push, чтобы другие видели: "
-                f"git commit -am \"{ident}: взял(а) рут\" && git push. "
-                "Если push отклонён и после git pull --rebase конфликт в шапке — рут уже взяли: "
-                "git rebase --abort и возьмите следующий.")
+    step_file = rel(it["path"])
+    push_msg = ("Коммит только этого файла прямо в основную ветку, чтобы другие сразу видели: "
+                f"git commit -m \"{ident}: взял(а) рут\" -m \"Скилл: kb-take\" -- {step_file} && git push. "
+                "Push отклонён → git pull --rebase; конфликт в шапке значит, рут уже взяли: "
+                f"git rebase --abort && git checkout -- {step_file}, затем взять следующий.")
     if pair:
         if people_on(fm) == 2 and len(pair) == 1 and fm.get("статус") in WIP_STATUSES:
             if over:
                 print(limit_msg)
                 return 1
-            text, _ = set_fields(it["text"], "step", {"напарник": user})
+            text, errs = set_fields(it["text"], "step", {"напарник": user})
+            if errs:
+                print("ОШИБКА  " + "; ".join(errs))
+                return 1
             write(it["path"], text)
             print(f"{ident}: вы напарник, владелец — {owner}. Договоритесь, кто какие разделы ведёт; "
                   "статус и нарезку ведёт владелец.")
             print(push_msg.replace("взял(а) рут", "напарник"))
             return 0
-        if people_on(fm) == 2:
+        if people_on(fm) == 2 and len(pair) == 2 and fm.get("статус") in WIP_STATUSES:
             print(f"ОШИБКА  {ident} уже ведут двое: {' и '.join(pair)}. Больше двух на рут не берут — "
                   "третий начинает делать за других. Возьмите другой рут или помогите вопросами и MR.")
+        elif people_on(fm) == 2:
+            print(f"ОШИБКА  {ident} у {owner}, статус «{fm.get('статус')}» — в пару входят только в статусах "
+                  f"{', '.join(WIP_STATUSES)}.")
         else:
             print(f"ОШИБКА  {ident} уже взял(а) {owner} (рут на одного)")
         return 1
@@ -1458,7 +1655,10 @@ def cmd_take(ident: str, force: bool) -> int:
     if over:
         print(limit_msg)
         return 1
-    text, _ = set_fields(it["text"], "step", {"владелец рута": user, "статус": "Разбор"})
+    text, errs = set_fields(it["text"], "step", {"владелец рута": user, "статус": "Разбор"})
+    if errs:
+        print("ОШИБКА  " + "; ".join(errs))
+        return 1
     write(it["path"], text)
     print(f"{ident}: владелец — {user}, статус «Разбор»." +
           (" Рут на двоих: второй возьмёт его той же командой take." if people_on(fm) == 2 else ""))
@@ -1467,11 +1667,30 @@ def cmd_take(ident: str, force: bool) -> int:
 
 
 def cmd_release(ident: str, reason: str) -> int:
+    ident = ident.strip().upper()
+    user = git_user()
+    if ident.startswith("SYS-"):
+        path = resolve(ident)
+        if not path:
+            print(f"Нет системы {ident}")
+            return 1
+        text = path.read_text(encoding="utf-8")
+        if parse_frontmatter(text).get("владелец раздела в пуле") != user:
+            print(f"ОШИБКА  отпустить систему может только её владелец")
+            return 1
+        text, errs = set_fields(text, "system", {"владелец раздела в пуле": "не назначен"})
+        write(path, text)
+        print(f"{ident}: владелец раздела не назначен. Коммит: «{ident}: отпустил(а) систему — {reason}»")
+        return 0
     it = step_by_id(ident)
     if not it:
         print(f"Нет шага {ident}")
         return 1
-    fm, user = it["fm"], git_user()
+    fm = it["fm"]
+    if fm.get("статус") not in WIP_STATUSES + ("Сверка с бизнесом",):
+        print(f"ОШИБКА  рут в статусе «{fm.get('статус')}» — вернуть можно только из разбора, сверки или нарезки. "
+              "После приёмки передача — через архитектора недели.")
+        return 1
     mate = fm.get("напарник", "")
     if user == mate:
         text, _ = set_fields(it["text"], "step", {"напарник": "—"})
@@ -1485,7 +1704,8 @@ def cmd_release(ident: str, reason: str) -> int:
     if mate in pair_of(fm):
         text, _ = set_fields(it["text"], "step", {"владелец рута": mate, "напарник": "—"})
         write(it["path"], text)
-        print(f"{ident}: владелец теперь {mate}, место напарника свободно. Коммит: «{ident}: передал(а) рут {mate} — {reason}»")
+        print(f"{ident}: владелец теперь {mate}, место напарника свободно — предупредите {mate}. "
+              f"Коммит: «{ident}: передал(а) рут {mate} — {reason}»")
         return 0
     text, _ = set_fields(it["text"], "step", {"владелец рута": "не назначен", "статус": "Готов к взятию"})
     write(it["path"], text)
@@ -1537,6 +1757,10 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 0
     cmd, args = argv[0], argv[1:]
+    if args and re.fullmatch(r"(?i)(pm|sys)-\d{2}", args[0]):
+        args[0] = args[0].upper()
+    elif args and re.fullmatch(r"(?i)[qadr]-(\d{3}|new-[\w-]+)", args[0]):
+        args[0] = args[0][0].upper() + args[0][1:]
     if cmd == "check":
         return cmd_check()
     if cmd == "index":
@@ -1549,8 +1773,8 @@ def main(argv: list[str]) -> int:
         return cmd_ready_check(args[0])
     if cmd == "take" and args:
         return cmd_take(args[0], "--force" in args)
-    if cmd == "release" and len(args) == 2:
-        return cmd_release(args[0], args[1])
+    if cmd == "release" and len(args) in (1, 2):
+        return cmd_release(args[0], args[1] if len(args) == 2 else "без причины")
     if cmd == "whoami":
         return cmd_whoami()
     if cmd == "set" and len(args) >= 2:
@@ -1586,4 +1810,9 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
+    try:
+        import signal
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    except (AttributeError, ValueError, OSError):
+        pass
     sys.exit(main(sys.argv[1:]))

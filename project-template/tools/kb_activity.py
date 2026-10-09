@@ -35,24 +35,27 @@ def _date(s: str) -> dt.datetime:
 
 
 def _parse_period(root: Path, since: str | None, until: str | None, today: dt.date):
-    def to_dt(v: str | None, default: dt.datetime) -> dt.datetime:
+    def to_dt(v: str | None, default: dt.datetime, is_until: bool = False) -> dt.datetime:
         if not v:
             return default
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}( \d{2}:\d{2})?", v):
-            return dt.datetime.fromisoformat(v)
+            d = dt.datetime.fromisoformat(v)
+            return d + dt.timedelta(days=1) if is_until and len(v) == 10 else d
         if re.fullmatch(r"\d+д", v):  # «7д» — последние 7 дней
             return dt.datetime.combine(today - dt.timedelta(days=int(v[:-1])), dt.time())
-        out = _git(root, "show", "-s", "--format=%aI", v).strip()
+        if not re.fullmatch(r"[0-9a-fA-F]{6,40}", v):
+            raise SystemExit(f"Не понял дату или хеш «{v}»: нужен ГГГГ-ММ-ДД, «7д» или хеш коммита")
+        out = _git(root, "show", "-s", "--format=%aI", "--end-of-options", v).strip()
         return _date(out) if out else default
     start = to_dt(since, dt.datetime.combine(today - dt.timedelta(days=7), dt.time()))
-    end = to_dt(until, dt.datetime.combine(today + dt.timedelta(days=1), dt.time()))
+    end = to_dt(until, dt.datetime.combine(today + dt.timedelta(days=1), dt.time()), is_until=True)
     return start, end
 
 
 def collect(root: Path):
     """Все коммиты со всех веток: автор, время, сообщение, добавленные и удалённые строки по файлам."""
-    raw = _git(root, "log", "--all", "--reverse", "--date=iso-strict", "-p", "--unified=0", "--no-color",
-               "--no-renames", "--format=%x1eC%x1f%H%x1f%an%x1f%ad%x1f%P%x1f%B%x1d", "--",
+    raw = _git(root, "-c", "core.quotepath=false", "log", "--all", "--reverse", "--date=iso-strict", "-p", "--unified=0",
+               "--no-color", "--find-renames", "--format=%x1eC%x1f%H%x1f%an%x1f%ad%x1f%P%x1f%B%x1d", "--",
                "context", "journal", "datasets", "materials", "specs", "core", "product.md", "team.md",
                "FEEDBACK.md", ":(exclude)context/process/_index.md", ":(exclude)journal/_index.md",
                ":(exclude)context/process/_map.svg", ":(exclude)context/process/_map.html")
@@ -71,13 +74,16 @@ def collect(root: Path):
                     c["files"].setdefault(cur, {"+": [], "-": []})
             elif line.startswith("new file mode") and cur:
                 c["new_files"].add(cur)
+            elif line.startswith("rename from ") and cur:
+                c.setdefault("renamed", {})[cur] = line[len("rename from "):].strip()
             elif cur and line.startswith("+") and not line.startswith("+++"):
                 c["files"][cur]["+"].append(line[1:])
             elif cur and line.startswith("-") and not line.startswith("---"):
                 c["files"][cur]["-"].append(line[1:])
         commits.append(c)
     # слияния (MR) — отдельно: в -p они без диффа
-    for line in _git(root, "log", "--all", "--merges", "--date=iso-strict", "--format=%H%x1f%an%x1f%ad%x1f%s").splitlines():
+    for line in _git(root, "-c", "core.quotepath=false", "log", "--all", "--merges", "--date=iso-strict",
+                     "--format=%H%x1f%an%x1f%ad%x1f%s").splitlines():
         h, an, ad, s = line.split("\x1f", 3)
         if not any(x["hash"] == h for x in commits):
             commits.append(dict(hash=h, author=an, when=_date(ad), merge=True, msg=s, files={}, new_files=set()))
@@ -190,7 +196,9 @@ def build(root: Path, kb, since: str | None, until: str | None, who: str | None)
     commits = collect(root)
     fm_team, roles = kb.team_info()
     people = [p for p in roles]
-    in_period = [c for c in commits if start <= c["when"] < end and c["author"] not in AUTOMATION]
+    def is_auto(c):
+        return c["author"] in AUTOMATION or c["msg"].startswith("kb: номера и сводки")
+    in_period = [c for c in commits if start <= c["when"] < end and not is_auto(c)]
 
     per = defaultdict(lambda: dict(commits=0, merges=0, days=set(), acts=Counter(), detail=defaultdict(list),
                                    no_id=0, skills=Counter(), last=None, others_roots=set()))
@@ -282,8 +290,24 @@ def build(root: Path, kb, since: str | None, until: str | None, who: str | None)
     # сигналы процесса
     signals = []
     limit = kb.wip_limit()
+    solo = str(fm_team.get("режим", "")).strip().startswith("соло")
     free = [p for p in people if len(kb.wip_of(p)) < limit and "разработчик" in roles.get(p, "")]
+    deps_on_pm00 = [it["fm"].get("id") for it in kb.load("step")
+                    if it["fm"].get("id") != "PM-00" and "PM-00" in kb.section_text(it["text"], "Нарезка на декомпозиты")]
+    pm00 = next((it for it in kb.load("step") if it["fm"].get("id") == "PM-00"), None)
+    if pm00 and not kb.pair_of(pm00["fm"]) and deps_on_pm00:
+        signals.append(f"PM-00 «Каркас и общие части» без владельца, а от него зависят декомпозиты {', '.join(deps_on_pm00)}. "
+                       "Смотреть: техлид потока или архитектор недели должен взять PM-00 (kb.py take PM-00).")
+    for it in kb.load("step"):
+        if it["fm"].get("статус") == "Декомпозиты в работе":
+            blockers = [q["fm"].get("id") for q in qs if q["fm"].get("статус") in OPEN_Q
+                        and any(str(b).startswith(it["fm"].get("id") + "-") for b in (q["fm"].get("блокирует") or []))]
+            if blockers:
+                signals.append(f"{it['fm'].get('id')} в «Декомпозиты в работе», но его декомпозиты блокируют открытые вопросы "
+                               f"{', '.join(blockers)}. Смотреть: приёмка прошла раньше ответов или допущений.")
     for r in roots:
+        if solo:
+            break
         if r["status"] == "Готов к взятию" and r["days"] is not None and r["days"] >= 2 and free:
             signals.append(f"{r['id']} «Готов к взятию» {r['days']} дн., а место в лимите есть у: {', '.join(free)}. "
                            "Смотреть: приоритет понятен? шаг выглядит неподъёмным? люди знают про /kb-take?")
@@ -311,7 +335,7 @@ def build(root: Path, kb, since: str | None, until: str | None, who: str | None)
         signals.append(f"Коммитов без ID раздела в сообщении: {no_id_total} из {all_commits}. "
                        "Смотреть: агенты пропускают правило 6 AGENTS.md — скиллы или модель.")
     silent = [p for p in people if p not in per]
-    if not any(v["skills"] for v in per.values()):
+    if all_commits and not any(v["skills"] for v in per.values()):
         signals.append("В коммитах нет строки «Скилл: kb-…» — не видно, какие скиллы используют. "
                        "Правило 6 AGENTS.md просит её добавлять.")
 
