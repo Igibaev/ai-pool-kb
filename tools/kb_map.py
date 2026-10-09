@@ -53,10 +53,21 @@ def parse_mermaid(text: str):
             n["terminal"] = True
         return mid
 
+    raw_lines = []
     for line in m.group(1).splitlines():
         line = line.strip()
-        if not line or line.startswith(("flowchart", "graph", "%%", "classDef", "class ", "style ", "linkStyle")):
+        if not line or line.startswith(("flowchart", "graph", "%%", "classDef", "class ", "style ", "linkStyle", "subgraph", "direction")) \
+                or line == "end":
             continue
+        # A --> B & C  →  две строки
+        if " & " in line and ("-->" in line or ".->" in line):
+            head, _, tail = line.rpartition("-->") if "-->" in line else line.rpartition(".->")
+            op = "-->" if "-->" in line else ".->"
+            for part in tail.split(" & "):
+                raw_lines.append(f"{head}{op} {part.strip()}")
+            continue
+        raw_lines.append(line)
+    for line in raw_lines:
         e = EDGE_RE.match(line)
         if e:
             g = e.groups()
