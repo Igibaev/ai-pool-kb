@@ -429,7 +429,7 @@ renderCat();
 const GROUPS = [["Продукт и карта",["product.md","context/process/_map.md","context/process/_index.md","context/glossary.md"]],
   ["Шаги и системы",["context/process/PM-04-sopostavlenie-oplat.md","context/process/PM-01-registraciya-nadpisey.md","context/process/PM-00-karkas.md","context/systems/SYS-01-1c-mfo.md"]],
   ["Журнал",["journal/_index.md","journal/questions/Q-002-istochnik-dolga.md","journal/questions/Q-004-summa-dlya-paketa.md","journal/questions/Q-005-pravilo-bez-nomera.md","journal/assumptions/A-001-ostatok-iz-mfo.md","journal/decisions/D-001-master-id.md","journal/digest/2026-10-13.md","journal/digest/2026-10-16.md"]],
-  ["Датасет и материалы",["datasets/PM-04/GD-PM-04-001.md","materials/answers/2026-10-13-vzyskanie.md","materials/interviews/2026-10-14-sverka-pm04.md"]]];
+  ["Датасет и материалы",["datasets/PM-04/GD-PM-04-001.md","materials/answers/2026-10-13-vzyskanie.md","materials/interviews/2026-10-14-sverka-PM-04.md"]]];
 let curF = "context/process/PM-04-sopostavlenie-oplat.md";
 function renderFiles(){
   document.getElementById("flist").innerHTML = GROUPS.map(([g,fs]) => `<div class="grp">${g}</div>` + fs.filter(f=>DATA.files[f]).map(f=>`<button data-f="${f}" ${f===curF?'aria-current="true"':""}>${f}</button>`).join("")).join("");

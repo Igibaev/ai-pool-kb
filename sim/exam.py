@@ -26,7 +26,7 @@ TASKS = {
                  "Остальное — на усмотрение агента."],
     ),
     "sync": dict(
-        commit_grep="kb: номера и сводки", branch="main", user="Гульнара", today="2026-10-13",
+        commit_grep="MR !3 pm01-razbor", offset=1, branch="main", user="Гульнара", today="2026-10-13",
         command="/kb-sync утро",
         answers=["Склеивать дубль — «да, нюанс автора позднего вопроса сохрани».",
                  "Формулировка нового вопроса — «да».",
@@ -47,7 +47,8 @@ def prepare(task, target: Path):
     if not SIM.exists():
         raise SystemExit("Сначала соберите симуляцию: python3 build.py")
     log = git(SIM, "log", "--reverse", "--format=%h %s").splitlines()
-    start = next(l.split()[0] for l in log if t["commit_grep"] in l)
+    idx = next(i for i, l in enumerate(log) if t["commit_grep"] in l) + t.get("offset", 0)
+    start = log[idx].split()[0]
     if target.exists():
         raise SystemExit(f"{target} уже есть — укажите новую папку")
     subprocess.run(["git", "clone", "-q", str(SIM), str(target)], check=True)

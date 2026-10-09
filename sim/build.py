@@ -123,9 +123,15 @@ def head():
     return git("rev-parse", "HEAD").strip()
 
 
+TRAILER = None   # сценарий ставит имя скилла; commit() добавляет трейлер «Скилл: …» людям, не CI
+
+
 def commit(who, when, msg):
     git("add", "-A")
-    git("commit", "-q", "-m", msg, who=who, when=when)
+    args = ["commit", "-q", "-m", msg]
+    if TRAILER and who != "CI":
+        args += ["-m", f"Скилл: {TRAILER}"]
+    git(*args, who=who, when=when)
     return head()
 
 
@@ -222,7 +228,7 @@ SHOW_FILES = ["product.md", "context/process/_map.md", "context/process/_index.m
               "journal/questions/Q-005-pravilo-bez-nomera.md", "journal/assumptions/A-001-ostatok-iz-mfo.md",
               "journal/decisions/D-001-master-id.md", "journal/digest/2026-10-13.md", "journal/digest/2026-10-16.md",
               "datasets/PM-04/GD-PM-04-001.md", "materials/answers/2026-10-13-vzyskanie.md",
-              "materials/interviews/2026-10-14-sverka-pm04.md"]
+              "materials/interviews/2026-10-14-sverka-PM-04.md"]
 files = {rel: read(rel) for rel in SHOW_FILES}
 tree = run("git", "ls-files").splitlines()
 log = git("log", "--graph", "--format=%h %an: %s", "--all").strip()
