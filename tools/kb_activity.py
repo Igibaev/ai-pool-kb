@@ -348,6 +348,12 @@ def build(root: Path, kb, since: str | None, until: str | None, who: str | None)
                 if "FEEDBACK.md" not in c["new_files"]:
                     feedback += [(c["author"], l.strip()) for l in ch["+"] if l.strip() and not l.startswith("#")]
 
+    # временные ID → постоянные, по журналу переименований
+    ren = {k: v[0] for k, v in kb.known_renames().items()} if hasattr(kb, "known_renames") else {}
+    if ren:
+        for v in per.values():
+            for kind, dets in v["detail"].items():
+                v["detail"][kind] = list(dict.fromkeys(ren.get(d, d) for d in dets))
     if who:
         per = {k: v for k, v in per.items() if k == who}
     return dict(start=start, end=end, per=per, roles=roles, silent=silent if not who else [],
