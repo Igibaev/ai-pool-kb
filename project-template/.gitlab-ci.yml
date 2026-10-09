@@ -1,6 +1,8 @@
-# База знаний: проверка на каждом MR, номера и сводки после слияния в основную ветку.
-# Задача kb-after-merge должна выполняться строго по одной (resource_group).
-# Нужен токен с правом push: переменная KB_PUSH_TOKEN (Settings → CI/CD → Variables).
+# База знаний: проверка на каждом MR и на каждом коммите в основную ветку; номера и сводки после слияния.
+# Задача kb-after-merge выполняется строго по одной (resource_group).
+# Нужен токен с правом push в основную ветку: переменная KB_PUSH_TOKEN (Settings → CI/CD → Variables).
+# Основная ветка: разрешите push для Developers (Settings → Repository → Protected branches → Allowed to push),
+# иначе взятие рутов и объекты журнала, которые идут прямым коммитом, будут отклонены.
 
 stages: [check, after-merge]
 
@@ -11,6 +13,7 @@ kb-check:
     - python3 tools/kb.py check
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
 
 kb-after-merge:
   stage: after-merge
@@ -24,7 +27,8 @@ kb-after-merge:
     - git pull --rebase origin "$CI_COMMIT_BRANCH"
   script:
     - python3 tools/kb.py after-merge
-    - python3 tools/kb.py check
+    # Проверка после нумерации не блокирует: ошибки увидит дежурный в дайджесте, номера и сводки должны уйти в любом случае
+    - python3 tools/kb.py check || echo "kb-check после after-merge: есть ошибки, смотрите вывод выше"
     - |
       if [ -n "$(git status --porcelain)" ]; then
         git add -A

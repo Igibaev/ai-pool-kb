@@ -27,7 +27,15 @@ OpenCode тоже работает с этим репозиторием, в то
    ```
    Ожидается: `Итог: ошибок 0`.
 
-**GitLab (для режима «команда»).** Создайте пустой проект, `git remote add origin …`, `git push -u origin main`. В Settings → CI/CD → Variables добавьте `KB_PUSH_TOKEN` — токен с правом push. `.gitlab-ci.yml` уже в репозитории. Для соло-пилота GitLab не нужен.
+**GitLab (для режима «команда»).** Создайте пустой проект, `git remote add origin …`, `git push -u origin main`. `.gitlab-ci.yml` уже в репозитории. Для соло-пилота GitLab не нужен. Настройки:
+
+| Где | Что | Зачем |
+|---|---|---|
+| Settings → Repository → Protected branches | Основная ветка: Allowed to push — Developers (Allowed to merge — Developers) | Взятие рутов, журнал, дежурство и созвоны идут прямым коммитом; иначе push отклонят |
+| Settings → CI/CD → Variables | `KB_PUSH_TOKEN` — токен с правом push в основную ветку (масked) | CI коммитит номера и сводки после каждого коммита в основную |
+| Settings → Merge requests | «Pipelines must succeed» | MR с ошибками `kb-check` не сливается; своё MR по своему файлу человек сливает сам после зелёного CI |
+| Settings → Merge requests | Merged results pipelines — желательно | Проверка идёт на результате слияния, а не на ветке |
+| Settings → Merge requests → Approvals | Не обязательно: обязательное ревью только для первого рута новичка, чужого файла и ядра — назначают ревьюера вручную | — |
 
 ## 2. Открыть в Claude desktop
 

@@ -11,7 +11,7 @@
     python3 tools/kb.py new risk <slug>       создать риск R-new-<slug>
     python3 tools/kb.py new step <slug> шаг="…" [порядок=… "главный объект=…" системы=[…] "Зачем этот шаг бизнесу=…"]
                                               создать файл шага PM-XX (аналитик, kb-map); номер — следующий свободный
-    python3 tools/kb.py new system <slug> система="…" ["Роль в продукте=…"]
+    python3 tools/kb.py new system <slug> система="…" ["Роль в процессе=…"]
                                               создать файл системы SYS-XX
     python3 tools/kb.py new question <slug> поле=значение … Раздел=текст …
                                               создать и сразу заполнить: тип=… раздел=PM-04 заголовок="…" Контекст="…"
@@ -612,7 +612,7 @@ def next_free_id(prefix: str, kind: str) -> str:
 
 def cmd_new_step_or_system(kind: str, slug: str, extra: list[str]) -> int:
     """new step <slug> шаг="…" [порядок=… "главный объект=…" системы=[…] "Зачем этот шаг бизнесу=…"]
-       new system <slug> система="…" ["Роль в продукте=…"]"""
+       new system <slug> система="…" ["Роль в процессе=…"]"""
     if not re.fullmatch(SLUG, slug):
         print("Короткое имя файла — латиница, цифры и дефисы: «sopostavlenie-oplat»")
         return 2
@@ -1435,7 +1435,7 @@ def cmd_whoami() -> int:
 
 # ---------- готовность, взятие рутов ----------
 
-WIP_STATUSES = ("Разбор", "Сверка с бизнесом", "Нарезка")
+WIP_STATUSES = ("Разбор", "Нарезка")   # «Сверка с бизнесом» — ожидание бизнеса, в лимит не считается
 UNASSIGNED = ("", "не назначен")
 
 
@@ -1513,7 +1513,7 @@ def ready_missing(step_text: str) -> list[str]:
             miss.append(f"«Материалы и контакты» — нет файла {m.group(1)}")
     contact = next((l for l in mat.splitlines() if l.startswith("Кто отвечает в бизнесе")), "")
     if not contact or is_placeholder(contact):
-        miss.append("«Материалы и контакты» — «Кто отвечает в бизнесе: <роль> — через <кого>»")
+        miss.append("«Материалы и контакты» — «Кто отвечает в бизнесе: <роль>» (через кого — в team.md)")
     pr = parse_frontmatter(step_text).get("приоритет", "")
     if not str(pr).strip().isdigit():
         miss.append("шапка — «приоритет: <число>»")
