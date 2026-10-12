@@ -20,6 +20,7 @@
     python3 kb/tools/kb.py release <PM-XX|SYS-XX> "<почему>"
                                               вернуть рут в «Готов к взятию» или отпустить систему
     python3 kb/tools/kb.py ready-check <PM-XX>   готов ли шаг к взятию: что ещё должен заполнить аналитик
+    python3 kb/tools/kb.py show <Q-…>          вопрос целиком для экрана: текст, тип, кто ответит, контекст, ответ
     python3 kb/tools/kb.py whoami                кто я: роли, стиль общения, режим, мои руты, новые ответы, вопросы, допущения, риски
     python3 kb/tools/kb.py note "<сделано>; дальше: <…>"
                                               заметка сессии в .kb/sessions/<имя>.md (локально, не в git) — для восстановления
@@ -1395,6 +1396,8 @@ def cmd_new_filled(kind: str, slug: str, extra: list[str]) -> int:
         return 1
     write(path, text)
     print(buf.getvalue(), end="")
+    if kind == "question":
+        print(question_card(text, created=True))
     return 0
 
 
@@ -1498,6 +1501,45 @@ def cmd_fact(ident: str, heading: str, fact: str, source: str, status: str) -> i
     return 0
 
 
+WHO_ANSWERS = {
+    "понимание": "бизнес или материалы — аналитик понесёт на созвон",
+    "бизнес-правило": "только бизнес — аналитик понесёт на созвон",
+    "факт о системе": "владелец системы в бизнесе или ИТ — через аналитика",
+    "решение": "пул — kb-decide, принимает архитектор недели",
+    "скоуп": "аналитик — kb-map",
+}
+
+
+def question_card(text: str, created: bool = False) -> str:
+    """Вопрос целиком для экрана: агент показывает его человеку, а не только пишет в файл."""
+    fm = parse_frontmatter(text)
+    head = first_heading(text)
+    ctx = " ".join(l.strip() for l in section_text(text, "Контекст").splitlines() if l.strip() and not is_placeholder(l))
+    blk = fm.get("блокирует") or []
+    blk = ", ".join(blk) if isinstance(blk, list) else str(blk)
+    lines = [("ПОКАЖИ ЧЕЛОВЕКУ И СПРОСИ" if created else "ВОПРОС") + f" — {fm.get('id')} {head}",
+             f"  тип: {fm.get('тип', '?')}; раздел: {fm.get('раздел', '?')}; блокирует: {blk or '—'}; автор: {fm.get('автор', '?')}",
+             f"  кто ответит: {WHO_ANSWERS.get(str(fm.get('тип')), '?')}"]
+    if ctx:
+        lines.append(f"  контекст: {ctx[:300]}")
+    if created:
+        lines.append("  Спроси: «Знаете ответ или кто его знает?» Знает с источником — запиши в «Ответ» сразу; "
+                     "нет — вопрос ждёт ответа в журнале, kb-next напомнит.")
+    return "\n".join(lines)
+
+
+def cmd_show(ident: str) -> int:
+    path = resolve(ident)
+    if not path or not re.match(r"^Q-", ident):
+        print(f"Не найден вопрос {ident}")
+        return 1
+    text = path.read_text(encoding="utf-8")
+    print(question_card(text) + f"\n  статус: {parse_frontmatter(text).get('статус')}; файл: {rel(path)}")
+    ans = "\n".join(l for l in section_text(text, "Ответ").splitlines() if l.strip() and not is_placeholder(l))
+    print("  ответ: " + (ans if ans else "— нет"))
+    return 0
+
+
 def cmd_whoami() -> int:
     user = git_user()
     fm_team, roles = team_info()
@@ -1549,7 +1591,29 @@ def cmd_whoami() -> int:
             where = "ещё не перенесён в шаг" if AWAIT_OWNER in ans else "перенесён"
             news.append(f"{fm.get('id')} [{fm.get('раздел')}] {first_heading(q['text'])} — {where}")
     if news:
-        print("НОВОЕ: пришли ответы на ваши вопросы:\n  " + "\n  ".join(news))
+        print("НОВОЕ: пришли ответы на ваши вопросы (текст ответа: python3 kb/tools/kb.py show Q-…):\n  " + "\n  ".join(news))
+    my_sys = {it["fm"].get("id") for it in load("system") if it["fm"].get("владелец раздела в пуле") == user}
+    my_roles = roles.get(user, "")
+    is_arch = str(fm_team.get("архитектор недели", "")).split("#")[0].strip() == user
+    to_me = []
+    for q in load("question"):
+        fm = q["fm"]
+        if fm.get("статус") not in ("открыт", "возможно отвечен") or fm.get("автор") == user:
+            continue
+        t, sec = fm.get("тип"), fm.get("раздел")
+        why = ""
+        if sec in my_roots | my_sys and t in ("понимание", "факт о системе", "решение"):
+            why = "вы владелец раздела"
+        elif t == "скоуп" and "аналитик" in my_roles:
+            why = "вы аналитик"
+        elif t == "решение" and is_arch:
+            why = "вы архитектор недели"
+        elif sec == "PM-00" and "техлид" in my_roles:
+            why = "вы техлид потока"
+        if why:
+            to_me.append(f"{fm.get('id')} [{t}, {sec}] {first_heading(q['text'])} — {why}")
+    if to_me:
+        print("ВОПРОСЫ К ВАМ — задать человеку в начале ответа (файл: kb/journal/questions/<ID>-*.md):\n  " + "\n  ".join(to_me))
     print("Мои открытые вопросы: " + ("\n  " + "\n  ".join(qs) if qs else "—"))
     moved = [f"{q['fm'].get('id')} {first_heading(q['text'])}" for q in load("question")
              if q["fm"].get("раздел") in my_roots and q["fm"].get("статус") == "отвечен"
@@ -2082,6 +2146,8 @@ def main(argv: list[str]) -> int:
         return cmd_release(args[0], args[1] if len(args) == 2 else "без причины")
     if cmd == "whoami":
         return cmd_whoami()
+    if cmd == "show" and len(args) == 1:
+        return cmd_show(args[0])
     if cmd == "team":
         return cmd_team(args)
     if cmd == "note" and args:

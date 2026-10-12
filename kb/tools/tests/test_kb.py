@@ -516,3 +516,25 @@ def test_append_creates_technical_notes_in_old_step(repo, kb):
     t = path.read_text(encoding="utf-8")
     assert t.index("## Технические заметки") < t.index("## Нарезка на декомпозиты")
     assert "- ключ — номер надписи" in t
+
+
+# ---------- вопрос показывается на экране, а не только пишется в файл ----------
+def test_new_question_prints_card_to_show(repo, kb):
+    rc, out = kb("new", "question", "porog", "тип=бизнес-правило", "раздел=PM-01",
+                 "заголовок=Почему долги до 10 000 тг не попадают в претензии?", "Контекст=в выгрузке их нет")
+    assert rc == 0, out
+    assert "ПОКАЖИ ЧЕЛОВЕКУ И СПРОСИ — Q-new-porog Почему долги до 10 000 тг" in out
+    assert "кто ответит: только бизнес" in out and "контекст: в выгрузке их нет" in out
+    rc, out = kb("show", "Q-new-porog")
+    assert rc == 0 and "ответ: — нет" in out
+
+
+def test_whoami_lists_questions_addressed_to_owner(repo, kb):
+    mk_step(repo, "PM-01", "reg")
+    rc, out = kb("set", "PM-01", "владелец рута=Тимур", user="Гульнара")
+    assert rc == 0, out
+    mk_question(repo, "klyuch", тип="факт о системе", заголовок="По какому ключу связать оплату")
+    rc, out = kb("whoami", user="Тимур")
+    assert "ВОПРОСЫ К ВАМ" in out and "Q-new-klyuch" in out and "вы владелец раздела" in out
+    rc, out = kb("whoami")          # автор, Мадина, свой вопрос себе не задаёт
+    assert "ВОПРОСЫ К ВАМ" not in out
