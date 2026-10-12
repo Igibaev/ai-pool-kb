@@ -14,7 +14,7 @@ OpenCode тоже работает с этим репозиторием, в то
 
 1. Новый продукт — новый репозиторий из шаблона `kb-template`. На GitHub: «Use this template». Иначе — клон без истории шаблона:
    ```
-   git clone --depth 1 https://github.com/adayigibaev-dev/kb-template moy-produkt
+   git clone --depth 1 https://github.com/Igibaev/kb-template moy-produkt
    cd moy-produkt
    rm -rf .git game
    git init -b main

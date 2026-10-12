@@ -32,7 +32,7 @@
 
 ## Подготовка (ведущий, 30 минут накануне)
 
-1. Репозиторий игры из шаблона: `git clone --depth 1 https://github.com/adayigibaev-dev/kb-template igra-1 && cd igra-1 && rm -rf .git && git init -b main && git add -A && git commit -m "Шаблон"`. Ответы бизнеса (`vedushchiy/`) в шаблоне не лежат — они у ведущего в репозитории `ai-pool-kb`, папка `game/`: агент игрока не должен их видеть.
+1. Репозиторий игры из шаблона: `git clone --depth 1 https://github.com/Igibaev/kb-template igra-1 && cd igra-1 && rm -rf .git && git init -b main && git add -A && git commit -m "Шаблон"`. Ответы бизнеса (`vedushchiy/`) в шаблоне не лежат — они у ведущего в репозитории `ai-pool-kb`, папка `game/`: агент игрока не должен их видеть.
 2. Общий remote. Без GitLab: `git init --bare /shared/igra-1.git` на общем диске или на одном ноутбуке, у всех `git remote add origin …`. С GitLab — настройки из `docs/setup.md` (push в main для Developers). Без CI номера раздаёт дежурный: после каждого слияния `python3 tools/kb.py after-merge` и коммит «kb: номера и сводки».
 3. У каждого игрока: клон, `git config user.name "Имя"` ровно как будет в `team.md`, Claude desktop или OpenCode, открыта папка репозитория. Проверка: `/kb-next` отвечает.
 4. Скопировать `game/<набор>/inbox/*` в `inbox/` репозитория аналитика. Не коммитить — это сделает `kb-init`.
