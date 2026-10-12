@@ -20,7 +20,14 @@
     python3 tools/kb.py release <PM-XX|SYS-XX> "<почему>"
                                               вернуть рут в «Готов к взятию» или отпустить систему
     python3 tools/kb.py ready-check <PM-XX>   готов ли шаг к взятию: что ещё должен заполнить аналитик
-    python3 tools/kb.py whoami                кто я: роли, режим, мои руты, вопросы, допущения, риски
+    python3 tools/kb.py whoami                кто я: роли, стиль общения, режим, мои руты, новые ответы, вопросы, допущения, риски
+    python3 tools/kb.py note "<сделано>; дальше: <…>"
+                                              заметка сессии в .kb/sessions/<имя>.md (локально, не в git) — для восстановления
+    python3 tools/kb.py resume                сессия прервалась: незакоммиченное, неотправленное, ветки, руты в работе, заметки
+    python3 tools/kb.py team add <Имя> git=<почта> "роли=…" [стиль=мягкий|краткий|подробный]
+    python3 tools/kb.py team set <Имя> роли=… | git=… | стиль=…
+    python3 tools/kb.py team remove <Имя> "<причина>"
+                                              состав команды в team.md (аналитик); пишет «Историю состава»
     python3 tools/kb.py set <ID|файл> поле=значение …
                                               поменять поле шапки с проверкой допустимых значений (статус, тип…);
                                               статус рута — только на следующий по порядку, назад — с --force "причина"
@@ -371,6 +378,34 @@ def cmd_check() -> int:
                 if not FACT_STATUS_RE.search(t):
                     warnings.append(f"{rel(it['path'])} «{sec}»: факт без статуса в скобках — «{t[:70]}»")
 
+    # правила письма (STE): длина предложения и канцелярит — подсказки, в итог не входят
+    style = []
+    def _style(where: str, text: str) -> None:
+        t = re.sub(r"\s*\([^()]*\)\s*$", "", text.strip())          # без «(источник, статус)» в конце
+        t = re.sub(r"`[^`]*`|\S+/\S+", "", t)                         # без путей и кода
+        for sent in re.split(r"(?<=[.!?;])\s+", t):
+            n = len(re.findall(r"[\wА-Яа-яЁё]+", sent))
+            if n > STE_MAX_WORDS:
+                style.append(f"{where}: {n} слов в предложении (до {STE_MAX_WORDS}) — разбейте: «{sent[:60]}…»")
+        m = STE_BAD_RE.search(t)
+        if m:
+            style.append(f"{where}: «{m.group(0)}» — канцелярит, скажите прямо: кто что делает")
+    for it in all_items["step"]:
+        for sec in FACT_SECTIONS:
+            for line in section_text(it["text"], sec).splitlines():
+                if re.match(r"^(-|\d+\.)\s+\S", line.strip()) and not has_placeholder(line):
+                    _style(f"{rel(it['path'])} «{sec}»", line.strip()[2:])
+    prod = ROOT / "product.md"
+    if prod.exists():
+        for sec in ("Что делает продукт", "Проблема"):
+            for line in section_text(prod.read_text(encoding="utf-8"), sec).splitlines():
+                if line.strip() and not has_placeholder(line):
+                    _style(f"product.md «{sec}»", line.strip().lstrip("-").strip())
+        if "## 10 слов" in prod.read_text(encoding="utf-8"):
+            style.append("product.md: раздел «10 слов» устарел — переименуйте в «Что делает продукт» и опишите 3–5 предложениями")
+    for q in all_items["question"]:
+        _style(f"{rel(q['path'])} заголовок", first_heading(q["text"]))
+
     # карта процессов: шаги на схеме и файлы шагов совпадают
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     try:
@@ -409,7 +444,7 @@ def cmd_check() -> int:
                     continue
                 if who not in team:
                     warnings.append(f"{rel(it['path'])}: «{field}: {who}» — нет такого человека в team.md "
-                                    f"(имя должно совпадать с git config user.name)")
+                                    f"(имя — из колонки «Имя» в team.md)")
 
     for it in all_items["step"]:
         fm = it["fm"]
@@ -427,6 +462,10 @@ def cmd_check() -> int:
         print(f"ПРЕДУПРЕЖДЕНИЕ  {w}")
     for e in errors:
         print(f"ОШИБКА          {e}")
+    for x in style[:15]:
+        print(f"ПИСЬМО          {x}")
+    if len(style) > 15:
+        print(f"ПИСЬМО          … и ещё {len(style) - 15}")
     print(f"Итог: ошибок {len(errors)}, предупреждений {len(warnings)}")
     return 1 if errors else 0
 
@@ -457,6 +496,8 @@ PD_PATTERNS = [
 ]
 PD_MASK_HINT = "замените на маску: оставьте первые 3–4 знака, остальное — звёздочки, например +7 701 ***-**-** или 3140590*******"
 PD_STRICT_DIRS = ("materials", "datasets", "inbox")   # здесь персональные данные — ошибка, не предупреждение
+STE_MAX_WORDS = 25
+STE_BAD_RE = re.compile(r"(?i)(?<![\wА-Яа-яЁё])(осуществля\w*|производит(?:ся|ь)\w*|явля(?:ется|ются)|данн(?:ый|ого|ому|ая|ую|ое|ой)|в рамках|соответствующ\w*)(?![\wА-Яа-яЁё])")
 FACT_SECTIONS = ["Как сейчас", "Объём и время", "Правила", "Исключения", "Боль"]
 FACT_STATUS_RE = re.compile(r"[,(]\s*(подтверждено|оценка|допущение\s+A-[\w-]+|противоречие)\b")
 FACT_STATUSES = ("подтверждено", "оценка", "противоречие")
@@ -571,11 +612,56 @@ def first_heading(text: str) -> str:
 
 # ---------- new ----------
 
-def git_user() -> str:
+def _git_cfg(key: str) -> str:
     try:
-        return subprocess.check_output(["git", "config", "user.name"], cwd=ROOT, text=True, encoding="utf-8").strip()
+        return subprocess.check_output(["git", "config", key], cwd=ROOT, text=True, encoding="utf-8").strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
+        return ""
+
+
+def team_people() -> list[dict]:
+    """Строки таблицы людей из team.md по заголовкам: Имя, git, Роли в пуле, Чем владеет, Стиль общения."""
+    p = ROOT / "team.md"
+    if not p.exists():
+        return []
+    head, rows, started = [], [], False
+    for line in body_of(p.read_text(encoding="utf-8")).splitlines():
+        if line.startswith("|"):
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if not started:
+                if cells[0] != "Имя":
+                    continue
+                started, head = True, cells
+                continue
+            if set(line.replace("|", "").strip()) <= set("-: "):
+                continue
+            if cells and cells[0] and not cells[0].startswith("<"):
+                rows.append({h: (cells[i] if i < len(cells) else "") for i, h in enumerate(head)})
+        elif started:
+            break
+    return rows
+
+
+def resolve_person(name: str, email: str = "") -> str:
+    """Имя из team.md по git-имени и почте. Сначала почта или git-имя в колонке «git», потом совпадение имени
+    без учёта регистра. Не нашли — исходное git-имя."""
+    name, email = (name or "").strip(), (email or "").strip().lower()
+    people = team_people()
+    for r in people:
+        keys = [k.strip().lower() for k in re.split(r"[,;]", r.get("git", "")) if k.strip()]
+        if (email and email in keys) or (name and name.lower() in keys):
+            return r["Имя"]
+    for r in people:
+        if name and r["Имя"].lower() == name.lower():
+            return r["Имя"]
+    return name
+
+
+def git_user() -> str:
+    raw = _git_cfg("user.name")
+    if not raw:
         return "<кто>"
+    return resolve_person(raw, _git_cfg("user.email"))
 
 
 def cmd_new(kind: str, slug: str) -> int:
@@ -759,9 +845,15 @@ def team_info() -> tuple[dict, dict[str, str]]:
     p = ROOT / "team.md"
     if not p.exists():
         return {}, {}
-    text = p.read_text(encoding="utf-8")
-    roles = {r[0]: (r[1] if len(r) > 1 else "") for r in first_table(body_of(text), "Имя") if r and r[0] and not r[0].startswith("<")}
-    return parse_frontmatter(text), roles
+    roles = {r["Имя"]: r.get("Роли в пуле", "") for r in team_people()}
+    return parse_frontmatter(p.read_text(encoding="utf-8")), roles
+
+
+def team_style(user: str) -> str:
+    for r in team_people():
+        if r["Имя"] == user:
+            return r.get("Стиль общения", "").strip()
+    return ""
 
 
 def section_text(text: str, heading: str) -> str:
@@ -799,9 +891,9 @@ def cmd_context(ident: str) -> int:
     prod = ROOT / "product.md"
     if prod.exists():
         pt = prod.read_text(encoding="utf-8")
-        ten = section_text(pt, "10 слов")
+        ten = section_text(pt, "Что делает продукт") or section_text(pt, "10 слов")
         metric = [l for l in pt.splitlines() if l.startswith(f"| {ident} |")]
-        out.append("\n== Продукт: " + (ten.splitlines()[0] if ten else "—"))
+        out.append("\n== Продукт: " + (" ".join(l for l in ten.splitlines() if l.strip()) if ten else "—"))
         out += [f"Метрика шага: {l}" for l in metric]
 
     for mp in sorted((ROOT / "context/process").glob("**/_map.md")):
@@ -1347,9 +1439,13 @@ def cmd_append(ident: str, heading: str, line: str) -> int:
         print(f"Не найден {ident}")
         return 1
     line = unescape(line)
-    if not re.match(r"^\s*(-|\d+\.|\|)", line) and heading in ("Подписчики", "Уточнения", "История"):
+    if not re.match(r"^\s*(-|\d+\.|\|)", line) and heading in ("Подписчики", "Уточнения", "История", "Технические заметки"):
         line = "- " + line
-    text, ok = put_section(path.read_text(encoding="utf-8"), heading, line, append=True)
+    text = path.read_text(encoding="utf-8")
+    if heading == "Технические заметки" and f"\n## {heading}\n" not in text and "\n## Нарезка на декомпозиты\n" in text:
+        # шаги, созданные до появления раздела: вставить его перед нарезкой
+        text = text.replace("\n## Нарезка на декомпозиты\n", f"\n## {heading}\n\n## Нарезка на декомпозиты\n", 1)
+    text, ok = put_section(text, heading, line, append=True)
     if not ok:
         print(f"ОШИБКА  в {rel(path)} нет раздела «{heading}»")
         return 1
@@ -1389,9 +1485,21 @@ def cmd_fact(ident: str, heading: str, fact: str, source: str, status: str) -> i
 def cmd_whoami() -> int:
     user = git_user()
     fm_team, roles = team_info()
-    print(f"Имя: {user}; роли: {roles.get(user, 'НЕТ В team.md — попросите аналитика добавить')}")
+    if user not in roles:
+        gname, gmail = _git_cfg("user.name") or "—", _git_cfg("user.email") or "—"
+        print(f"Вас нет в team.md: git-имя «{gname}», почта «{gmail}».\n"
+              f"Отправьте аналитику строку — он добавит вас командой:\n"
+              f"  python3 tools/kb.py team add <Имя> git={gmail if gmail != '—' else gname} \"роли=<разработчик|тестировщик|…>\"\n"
+              f"Пока вас нет в team.md, агент не знает вашу роль и права.")
+    print(f"Имя: {user}; роли: {roles.get(user, 'НЕТ В team.md')}"
+          + (f"; стиль общения: {team_style(user)}" if team_style(user) else ""))
     print(f"Режим: {fm_team.get('режим', '?')}; архитектор недели: {fm_team.get('архитектор недели', '?')}; "
           f"рабочие часы: {fm_team.get('рабочие часы', '?')}")
+    u = unfinished(user)
+    if u["status"] or u["unpushed"]:
+        print(f"НЕЗАВЕРШЁННОЕ: не закоммичено файлов — {len(u['status'])}, не отправлено коммитов — {len(u['unpushed'])}"
+              + (f"; последняя заметка: {u['notes'][-1][2:]}" if u["notes"] else "")
+              + ". Подробно: python3 tools/kb.py resume")
     mine = [f"{it['fm'].get('id')} ({it['fm'].get('статус')}{', напарник' if it['fm'].get('владелец рута') != user else ''})"
             for it in load("step") if user in pair_of(it["fm"])]
     my_roots = {it["fm"].get("id") for it in load("step") if user in pair_of(it["fm"])}
@@ -1409,6 +1517,23 @@ def cmd_whoami() -> int:
         subs = section_text(q["text"], "Подписчики")
         if fm.get("автор") == user or re.search(rf"^-\s*{re.escape(user)}\b", subs, flags=re.M):
             qs.append(f"{fm.get('id')} [{fm.get('статус')}] {first_heading(q['text'])}")
+    news = []
+    for q in load("question"):
+        fm = q["fm"]
+        if fm.get("статус") != "отвечен":
+            continue
+        subs = section_text(q["text"], "Подписчики")
+        if not (fm.get("автор") == user or re.search(rf"^-\s*{re.escape(user)}\b", subs, flags=re.M)):
+            continue
+        ans = section_text(q["text"], "Ответ")
+        dates = [parse_date(d) for d in re.findall(r"\d{4}-\d{2}-\d{2}", ans)]
+        dates = [d for d in dates if d]
+        fresh = dates and max(dates) >= TODAY - dt.timedelta(days=7)
+        if AWAIT_OWNER in ans or fresh:
+            where = "ещё не перенесён в шаг" if AWAIT_OWNER in ans else "перенесён"
+            news.append(f"{fm.get('id')} [{fm.get('раздел')}] {first_heading(q['text'])} — {where}")
+    if news:
+        print("НОВОЕ: пришли ответы на ваши вопросы:\n  " + "\n  ".join(news))
     print("Мои открытые вопросы: " + ("\n  " + "\n  ".join(qs) if qs else "—"))
     moved = [f"{q['fm'].get('id')} {first_heading(q['text'])}" for q in load("question")
              if q["fm"].get("раздел") in my_roots and q["fm"].get("статус") == "отвечен"
@@ -1752,6 +1877,169 @@ def cmd_report(with_materials: bool) -> int:
     return 0
 
 
+# ---------- сессии: заметки и восстановление ----------
+
+def _session_file(user: str) -> Path:
+    return ROOT / ".kb" / "sessions" / f"{slugify(user) or 'user'}.md"
+
+
+def cmd_note(text: str) -> int:
+    user = git_user()
+    f = _session_file(user)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    branch = _git_out_safe("rev-parse", "--abbrev-ref", "HEAD") or "?"
+    with f.open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(f"- {stamp} [{branch}] {text.strip()}\n")
+    print(f"Заметка записана: {rel(f)} (локально, в git не идёт)")
+    return 0
+
+
+def _git_out_safe(*args: str) -> str:
+    try:
+        return subprocess.check_output(["git", "-c", "core.quotepath=false", *args], cwd=ROOT, text=True,
+                                       encoding="utf-8", stderr=subprocess.DEVNULL).strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return ""
+
+
+def unfinished(user: str) -> dict:
+    """Что осталось от прошлой сессии: незакоммиченное, неотправленное, ветки, последние заметки."""
+    st = [l for l in _git_out_safe("status", "--porcelain").splitlines()
+          if l.strip() and not l[3:].startswith((".kb/", "kb-report-"))]
+    branch = _git_out_safe("rev-parse", "--abbrev-ref", "HEAD")
+    unpushed = _git_out_safe("log", "--oneline", "@{u}..") if _git_out_safe("rev-parse", "--abbrev-ref", "@{u}") else ""
+    main_b = "main" if _git_out_safe("rev-parse", "--verify", "-q", "main") else "master"
+    mine = []
+    for b in _git_out_safe("for-each-ref", "--format=%(refname:short)", "refs/heads").splitlines():
+        if b in (main_b,):
+            continue
+        ahead = _git_out_safe("log", "--oneline", f"{main_b}..{b}")
+        if ahead:
+            mine.append(f"{b}: {len(ahead.splitlines())} коммит(ов) не в {main_b}")
+    f = _session_file(user)
+    notes = f.read_text(encoding="utf-8").strip().splitlines()[-5:] if f.exists() else []
+    return dict(status=st, branch=branch, unpushed=unpushed.splitlines(), branches=mine, notes=notes)
+
+
+def cmd_resume() -> int:
+    user = git_user()
+    u = unfinished(user)
+    print(f"Кто: {user}; ветка сейчас: {u['branch'] or '?'}")
+    print("Не закоммичено: " + ("\n  " + "\n  ".join(u["status"]) if u["status"] else "—"))
+    print("Закоммичено, но не отправлено (git push): " + ("\n  " + "\n  ".join(u["unpushed"]) if u["unpushed"] else "—"))
+    print("Ветки с работой, которой нет в основной: " + ("\n  " + "\n  ".join(u["branches"]) if u["branches"] else "—"))
+    wip = [f"{it['fm'].get('id')} ({it['fm'].get('статус')})" for it in load("step")
+           if user in pair_of(it["fm"]) and it["fm"].get("статус") in WIP_STATUSES]
+    print("Руты в работе: " + (", ".join(wip) or "—"))
+    print("Последние заметки сессии (.kb/sessions): " + ("\n  " + "\n  ".join(u["notes"]) if u["notes"] else "— нет"))
+    print("\nДальше: покажи человеку, на чём остановились, и спроси, продолжать ли с последней заметки. "
+          "Незакоммиченные файлы не теряй: проверь их (git diff), затем check и коммит.")
+    return 0
+
+
+# ---------- состав команды ----------
+
+TEAM_COLS = ["Имя", "git", "Роли в пуле", "Чем владеет", "Стиль общения"]
+STYLES = ("мягкий", "краткий", "подробный")
+TEAM_KEYS = {"git": "git", "роли": "Роли в пуле", "стиль": "Стиль общения", "владеет": "Чем владеет"}
+
+
+def _team_rewrite(people: list[dict], history: str) -> None:
+    p = ROOT / "team.md"
+    text = p.read_text(encoding="utf-8")
+    lines = text.split("\n")
+    start = next(i for i, l in enumerate(lines) if l.startswith("| Имя |"))
+    end = start + 1
+    while end < len(lines) and lines[end].startswith("|"):
+        end += 1
+    table = ["| " + " | ".join(TEAM_COLS) + " |", "|" + "---|" * len(TEAM_COLS)]
+    table += ["| " + " | ".join(r.get(c, "") for c in TEAM_COLS) + " |" for r in people]
+    lines[start:end] = table
+    text = "\n".join(lines)
+    p.write_text(text, encoding="utf-8", newline="\n")   # сначала таблица: так автор правки уже узнаётся по team.md
+    row = f"| {TODAY} | {history} | {git_user()} |"
+    if "## История состава" not in text:
+        text = text.rstrip() + ("\n\n## История состава\nКто пришёл, ушёл, сменил роль. Пишет `kb.py team`, руками не править, строки не удалять.\n\n"
+                                "| Дата | Что изменилось | Кто внёс |\n|---|---|---|\n")
+    sec = re.search(r"^## История состава\n.*?(?=^## |\Z)", text, flags=re.M | re.S)
+    body = sec.group(0).rstrip("\n") + "\n" + row + "\n"
+    text = text[:sec.start()] + body + ("\n" + text[sec.end():] if text[sec.end():].strip() else "")
+    p.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8", newline="\n")
+
+
+def cmd_team(args: list[str]) -> int:
+    """team add <Имя> git=… роли=… [стиль=…] | team set <Имя> поле=… | team remove <Имя> "<причина>" """
+    if not (ROOT / "team.md").exists():
+        print("ОШИБКА: нет team.md")
+        return 1
+    if len(args) < 2 or args[0] not in ("add", "set", "remove"):
+        print('Как: team add <Имя> git=<почта> "роли=разработчик, тестировщик" [стиль=мягкий|краткий|подробный]\n'
+              '     team set <Имя> роли=… | git=… | стиль=…\n     team remove <Имя> "<причина>"')
+        return 2
+    action, name, rest = args[0], args[1].strip(), args[2:]
+    people = team_people()
+    me = git_user()
+    my_roles = {r["Имя"]: r.get("Роли в пуле", "") for r in people}.get(me, "")
+    if people and not re.search(r"аналитик|руководитель", my_roles):
+        print(f"ОШИБКА: состав команды правит аналитик (или руководитель). Вы — {me}: {my_roles or 'нет в team.md'}")
+        return 1
+    fields = {}
+    for a in rest if action != "remove" else []:
+        if "=" not in a:
+            print(f"ОШИБКА: «{a}» — нужно поле=значение: {', '.join(TEAM_KEYS)}")
+            return 2
+        k, v = a.split("=", 1)
+        k = k.strip().lower()
+        if k not in TEAM_KEYS:
+            print(f"ОШИБКА: поле «{k}» — можно {', '.join(TEAM_KEYS)}")
+            return 2
+        if k == "стиль" and v.strip() and v.strip() not in STYLES:
+            print(f"ОШИБКА: стиль «{v}» — можно {', '.join(STYLES)}")
+            return 2
+        fields[TEAM_KEYS[k]] = v.strip()
+    idx = next((i for i, r in enumerate(people) if r["Имя"].lower() == name.lower()), None)
+    if action == "add":
+        if idx is not None:
+            print(f"ОШИБКА: {name} уже в team.md — меняйте командой team set")
+            return 1
+        if not fields.get("Роли в пуле"):
+            print("ОШИБКА: укажите роли=…")
+            return 2
+        row = {c: "" for c in TEAM_COLS}
+        row.update({"Имя": name, **fields})
+        people = [r for r in people if r["Имя"] != "<Имя>"] + [row]
+        _team_rewrite(people, f"+ {name}: {fields['Роли в пуле']}")
+        print(f"Добавлен {name}. Коммит: git commit -m \"team: + {name}\" -m \"Скилл: kb-init\" -- team.md")
+        return 0
+    if idx is None:
+        print(f"ОШИБКА: {name} нет в team.md")
+        return 1
+    if action == "set":
+        if not fields:
+            print("ОШИБКА: что поменять? роли=… git=… стиль=…")
+            return 2
+        old = people[idx]
+        what = "; ".join(f"{k}: {old.get(k, '') or '—'} → {v or '—'}" for k, v in fields.items() if old.get(k, "") != v)
+        if not what:
+            print("Ничего не изменилось")
+            return 0
+        people[idx].update(fields)
+        _team_rewrite(people, f"{name}: {what}")
+        print(f"Изменено: {name}: {what}")
+        return 0
+    why = rest[0] if rest else "без причины"
+    owns = [it["fm"].get("id") for it in load("step") if name in pair_of(it["fm"])]
+    owns += [it["fm"].get("id") for it in load("system") if it["fm"].get("владелец раздела в пуле") == name]
+    if owns:
+        print(f"ОШИБКА: за {name} числятся {', '.join(owns)}. Сначала передайте или верните их: kb.py release …")
+        return 1
+    people.pop(idx)
+    _team_rewrite(people, f"− {name}: {why}")
+    print(f"Удалён {name}. Его вопросы и допущения остаются в журнале; в истории состава — строка с причиной.")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
@@ -1777,6 +2065,12 @@ def main(argv: list[str]) -> int:
         return cmd_release(args[0], args[1] if len(args) == 2 else "без причины")
     if cmd == "whoami":
         return cmd_whoami()
+    if cmd == "team":
+        return cmd_team(args)
+    if cmd == "note" and args:
+        return cmd_note(" ".join(args))
+    if cmd == "resume":
+        return cmd_resume()
     if cmd == "set" and len(args) >= 2:
         return cmd_set(args[0], args[1:])
     if cmd == "append" and len(args) == 3:

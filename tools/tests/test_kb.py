@@ -424,3 +424,95 @@ def test_whoami_matches_names_exactly(repo, kb):
     rc, out = kb("whoami", user="Алия")
     assert rc == 0, out
     assert "A-new-a" in out
+
+
+# ---------- человек узнаётся по почте; состав команды с историей ----------
+def test_person_resolved_by_email_in_git_column(repo, kb):
+    rc, out = kb("team", "set", "Мадина", "git=madina@corp.kz", user="Гульнара")
+    assert rc == 0, out
+    git(repo, "config", "user.email", "madina@corp.kz")
+    rc, out = kb("whoami", user="madina.s")
+    assert rc == 0, out
+    assert "Имя: Мадина; роли: разработчик" in out
+    assert "Вас нет в team.md" not in out
+
+
+def test_unknown_person_gets_line_for_analyst(repo, kb):
+    rc, out = kb("whoami", user="Незнакомец")
+    assert "Вас нет в team.md" in out and "team add" in out
+
+
+def test_team_add_set_remove_writes_history_and_checks_rights(repo, kb):
+    rc, out = kb("team", "add", "Ира", "git=ira@corp.kz", "роли=тестировщик", user="Мадина")
+    assert rc == 1 and "правит аналитик" in out
+    rc, out = kb("team", "add", "Ира", "git=ira@corp.kz", "роли=тестировщик", "стиль=краткий", user="Гульнара")
+    assert rc == 0, out
+    rc, out = kb("team", "set", "Ира", "стиль=грубый", user="Гульнара")
+    assert rc == 2 and "ОШИБКА" in out
+    rc, out = kb("team", "remove", "Ира", "ушла в другой продукт", user="Гульнара")
+    assert rc == 0, out
+    t = (repo / "team.md").read_text(encoding="utf-8")
+    assert "| 2026-10-16 | + Ира: тестировщик | Гульнара |" in t
+    assert "| 2026-10-16 | − Ира: ушла в другой продукт | Гульнара |" in t
+    assert "| Ира |" not in t
+    rc, out = kb("check")
+    assert rc == 0, out
+
+
+def test_team_remove_refuses_owner_of_root(repo, kb):
+    mk_step(repo, "PM-01", "reg")
+    rc, out = kb("set", "PM-01", "владелец рута=Тимур", user="Гульнара")
+    assert rc == 0, out
+    rc, out = kb("team", "remove", "Тимур", "уходит", user="Гульнара")
+    assert rc == 1 and "PM-01" in out
+
+
+# ---------- ответ на мой вопрос виден автору ----------
+def test_whoami_shows_answers_to_author(repo, kb):
+    mk_question(repo, "versiya", раздел="ROOT", заголовок="Какая версия 1С")
+    rc, out = kb("append", "Q-new-versiya", "Ответ",
+                 "администратор, 2026-10-15, materials/answers/x.md: 8.3. Записан в: ждёт владельца")
+    assert rc == 0, out
+    rc, out = kb("set", "Q-new-versiya", "статус=отвечен")
+    assert rc == 0, out
+    rc, out = kb("whoami")          # автор — Мадина
+    assert "НОВОЕ: пришли ответы на ваши вопросы" in out and "Q-new-versiya" in out
+    rc, out = kb("whoami", user="Тимур")
+    assert "НОВОЕ" not in out
+
+
+# ---------- заметки сессии и восстановление ----------
+def test_note_and_resume(repo, kb):
+    rc, out = kb("note", "разобрал Правила; дальше: Исключения")
+    assert rc == 0, out
+    (repo / "product.md").write_text("правка\n", encoding="utf-8")
+    rc, out = kb("whoami")
+    assert "НЕЗАВЕРШЁННОЕ: не закоммичено файлов — 1" in out
+    rc, out = kb("resume")
+    assert rc == 0, out
+    assert "product.md" in out and "дальше: Исключения" in out
+    assert ".kb/" not in git(repo, "status", "--porcelain")
+
+
+# ---------- правила письма ----------
+def test_check_writing_hints_do_not_count_as_errors(repo, kb):
+    p = repo / "product.md"
+    t = p.read_text(encoding="utf-8")
+    long = " ".join(["слово"] * 30) + "."
+    t = t.replace("<3–5 предложений", long + "\nСистема осуществляет контроль.\n<3–5 предложений", 1)
+    p.write_text(t, encoding="utf-8")
+    rc, out = kb("check")
+    assert rc == 0, out
+    assert "30 слов в предложении" in out and "осуществляет" in out
+
+
+def test_append_creates_technical_notes_in_old_step(repo, kb):
+    path = mk_step(repo, "PM-01", "reg")
+    t = path.read_text(encoding="utf-8")
+    t = re.sub(r"## Технические заметки\n.*?(?=## Нарезка)", "", t, flags=re.S)
+    path.write_text(t, encoding="utf-8")
+    rc, out = kb("append", "PM-01", "Технические заметки", "ключ — номер надписи (разработчик, 2026-10-16, идея)")
+    assert rc == 0, out
+    t = path.read_text(encoding="utf-8")
+    assert t.index("## Технические заметки") < t.index("## Нарезка на декомпозиты")
+    assert "- ключ — номер надписи" in t

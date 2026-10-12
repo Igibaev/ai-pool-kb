@@ -52,18 +52,18 @@ def _parse_period(root: Path, since: str | None, until: str | None, today: dt.da
     return start, end
 
 
-def collect(root: Path):
+def collect(root: Path, who=lambda name, email: name):
     """Все коммиты со всех веток: автор, время, сообщение, добавленные и удалённые строки по файлам."""
     raw = _git(root, "-c", "core.quotepath=false", "log", "--all", "--reverse", "--date=iso-strict", "-p", "--unified=0",
-               "--no-color", "--find-renames", "--format=%x1eC%x1f%H%x1f%an%x1f%ad%x1f%P%x1f%B%x1d", "--",
+               "--no-color", "--find-renames", "--format=%x1eC%x1f%H%x1f%an%x1f%ae%x1f%ad%x1f%P%x1f%B%x1d", "--",
                "context", "journal", "datasets", "materials", "specs", "core", "product.md", "team.md",
                "FEEDBACK.md", ":(exclude)context/process/_index.md", ":(exclude)journal/_index.md",
                ":(exclude)context/process/_map.svg", ":(exclude)context/process/_map.html")
     commits = []
     for chunk in raw.split("\x1eC\x1f")[1:]:
         head, _, body = chunk.partition("\x1d")
-        h, an, ad, parents, msg = head.split("\x1f", 4)
-        c = dict(hash=h, author=an, when=_date(ad), merge=len(parents.split()) > 1, msg=msg.strip(),
+        h, an, ae, ad, parents, msg = head.split("\x1f", 5)
+        c = dict(hash=h, author=who(an, ae), when=_date(ad), merge=len(parents.split()) > 1, msg=msg.strip(),
                  files={}, new_files=set())
         cur = None
         for line in body.splitlines():
@@ -83,10 +83,10 @@ def collect(root: Path):
         commits.append(c)
     # слияния (MR) — отдельно: в -p они без диффа
     for line in _git(root, "-c", "core.quotepath=false", "log", "--all", "--merges", "--date=iso-strict",
-                     "--format=%H%x1f%an%x1f%ad%x1f%s").splitlines():
-        h, an, ad, s = line.split("\x1f", 3)
+                     "--format=%H%x1f%an%x1f%ae%x1f%ad%x1f%s").splitlines():
+        h, an, ae, ad, s = line.split("\x1f", 4)
         if not any(x["hash"] == h for x in commits):
-            commits.append(dict(hash=h, author=an, when=_date(ad), merge=True, msg=s, files={}, new_files=set()))
+            commits.append(dict(hash=h, author=who(an, ae), when=_date(ad), merge=True, msg=s, files={}, new_files=set()))
     commits.sort(key=lambda x: x["when"])
     return commits
 
@@ -193,7 +193,7 @@ def _workdays(a: dt.datetime, b: dt.datetime) -> float:
 def build(root: Path, kb, since: str | None, until: str | None, who: str | None):
     today = kb.TODAY
     start, end = _parse_period(root, since, until, today)
-    commits = collect(root)
+    commits = collect(root, kb.resolve_person)
     fm_team, roles = kb.team_info()
     people = [p for p in roles]
     def is_auto(c):

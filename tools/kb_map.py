@@ -278,13 +278,13 @@ LIGHT = """
 .edge.dashed{stroke-dasharray:6 5;stroke:#A0A6B6}
 .arrowhead{fill:#7A8194}
 .elabel rect{fill:#FFFFFF;stroke:#D5D9E2}
-.elabel text{font-size:11px;fill:#5E6478}
+.elabel text{font-size:12px;fill:#5E6478}
 .term rect{fill:#F3F4F7;stroke:#A0A6B6;stroke-dasharray:4 3}
 .term text{font-size:12px;fill:#5E6478}
 .node .box{fill:#FFFFFF;stroke:#C9CEDA;stroke-width:1.2}
 .node .band{fill:#EEF0F3}
 .node .sid{font:600 12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;fill:#1C2033}
-.node .st{font-size:11px;font-weight:600;fill:#1C2033}
+.node .st{font-size:12px;font-weight:600;fill:#1C2033}
 .node .name{font-size:14px;font-weight:600;fill:#1C2033}
 .node .owner{font-size:12px;fill:#5E6478}
 .badge rect{fill:#EEF0F3}
@@ -355,9 +355,17 @@ h1{{font-size:24px;margin:0 0 4px}}
 .lg.s-ready i{{background:#E8C64A}}.lg.s-explore i{{background:#7DA2E8}}.lg.s-check i{{background:#A88BE0}}.lg.s-slice i{{background:#D9AE4E}}
 .lg.s-accept i{{background:#E0955A}}.lg.s-work i{{background:#4FAE9F}}.lg.s-done i{{background:#4EA866}}
 .hint{{font-size:13px;color:var(--muted)}}
-.grid{{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start}}
-.canvas{{background:var(--sheet);border:1px solid var(--line);border-radius:12px;overflow:auto;padding:6px}}
-.canvas svg{{display:block;width:100%;height:auto;min-width:880px}}
+.grid{{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;align-items:start}}
+.grid.open{{grid-template-columns:minmax(0,1fr) 360px}}
+.grid:not(.open) aside{{display:none}}
+aside .close{{float:right;font:inherit;font-size:18px;line-height:1;border:0;background:none;color:var(--muted);cursor:pointer;padding:2px 4px}}
+.canvas{{background:var(--sheet);border:1px solid var(--line);border-radius:12px;overflow:auto;padding:6px;height:calc(100vh - 150px);min-height:420px;cursor:grab;position:relative}}
+.canvas.drag{{cursor:grabbing;user-select:none}}
+.canvas svg{{display:block;height:auto;max-width:none}}
+.zoom{{display:flex;gap:6px;align-items:center;margin:10px 0 8px;flex-wrap:wrap}}
+.zoom button{{font:inherit;font-size:14px;min-width:36px;height:32px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--sheet);color:var(--ink);cursor:pointer}}
+.zoom button:hover{{border-color:var(--accent)}}
+.zoom .z{{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;min-width:48px;text-align:center}}
 .node{{cursor:pointer}}
 .node:focus{{outline:none}}
 .node:focus .box,.node.sel .box{{stroke:var(--accent);stroke-width:2.4}}
@@ -376,10 +384,15 @@ aside p{{margin:4px 0;font-size:14px}}
 <div class="meta">{esc(meta)}</div>
 <p class="obj">{esc(main_obj)}</p>
 <div class="legend">{legend}</div>
-<div class="hint">Значки: <b>?</b> открытые вопросы · <b>A</b> открытые допущения · <b>R</b> риски · <b>n/m</b> декомпозиты готово / всего. Пунктир — исключения и ветки. Нажмите на шаг — справа подробности.</div>
+<div class="hint">Значки: <b>?</b> открытые вопросы · <b>A</b> открытые допущения · <b>R</b> риски · <b>n/m</b> декомпозиты готово / всего. Пунктир — исключения и ветки. Нажмите на шаг — справа откроются подробности.</div>
 {warn}
-<div class="grid">
-<div class="canvas">{svg}</div>
+<div class="zoom" role="toolbar" aria-label="Масштаб схемы">
+<button type="button" data-z="out" title="Мельче (−)">−</button><span class="z" id="zv">100%</span><button type="button" data-z="in" title="Крупнее (+)">+</button>
+<button type="button" data-z="fit" title="Вся схема по ширине (0)">По ширине</button><button type="button" data-z="one" title="Исходный размер (1)">100%</button>
+<span class="hint">Ctrl/⌘ + колесо — масштаб, перетаскивание — сдвиг схемы</span>
+</div>
+<div class="grid" id="grid">
+<div class="canvas" id="cv">{svg}</div>
 <aside id="info"><h2>Шаг не выбран</h2><p>Нажмите на шаг на схеме.</p></aside>
 </div></div>
 <script>
@@ -388,9 +401,11 @@ const e = s => String(s ?? "").replace(/[&<>"]/g, c => ({{"&":"&amp;","<":"&lt;"
 function list(items, f) {{ return items.length ? "<ul>" + items.map(f).join("") + "</ul>" : "<p>—</p>"; }}
 function show(id) {{
   document.querySelectorAll(".node").forEach(n => n.classList.toggle("sel", n.dataset.step === id));
+  document.getElementById("grid").classList.add("open");
   const r = R[id], el = document.getElementById("info");
-  if (!r) {{ el.innerHTML = `<h2>${{e(id)}}</h2><p>Файла шага нет. Создайте его скиллом kb-map.</p>`; return; }}
-  el.innerHTML = `<h2>${{e(id)}} ${{e(r["шаг"])}}</h2>
+  const x = `<button class="close" type="button" aria-label="Закрыть" onclick="hide()">×</button>`;
+  if (!r) {{ el.innerHTML = x + `<h2>${{e(id)}}</h2><p>Файла шага нет. Создайте его скиллом kb-map.</p>`; return; }}
+  el.innerHTML = x + `<h2>${{e(id)}} ${{e(r["шаг"])}}</h2>
   <p>${{e(r["статус"])}} · владелец: ${{e(r["владелец"])}}</p><p class="k">${{e(r.path)}}</p>
   <h3>Зачем</h3><p>${{e(r["зачем"]) || "—"}}</p>
   <h3>Боль</h3>${{list(r["боль"], x => `<li>${{e(x)}}</li>`)}}
@@ -399,8 +414,45 @@ function show(id) {{
   <h3>Риски</h3>${{list(r.r, x => `<li><span class="k">${{e(x[0])}}</span> ${{e(x[1])}} — влияние ${{e(x[2])}}</li>`)}}
   <h3>Декомпозиты</h3>${{list(r["нарезка"], x => `<li><span class="k">${{e(x[0])}}</span> ${{e(x[1])}}</li>`)}}`;
 }}
+function hide() {{ document.getElementById("grid").classList.remove("open"); document.querySelectorAll(".node").forEach(n => n.classList.remove("sel")); }}
+const cv = document.getElementById("cv"), sv = cv.querySelector("svg"), zv = document.getElementById("zv");
+const W = sv.viewBox.baseVal.width || sv.getBBox().width;
+let z = 1;
+try {{ z = parseFloat(localStorage.getItem("kbMapZoom")) || 1; }} catch (_) {{}}
+function setZ(nz, cx, cy) {{
+  nz = Math.min(3, Math.max(0.3, nz));
+  const r = cv.getBoundingClientRect(), ox = (cx ?? r.width / 2), oy = (cy ?? r.height / 2);
+  const px = (cv.scrollLeft + ox) / z, py = (cv.scrollTop + oy) / z;
+  z = nz; sv.style.width = Math.round(W * z) + "px";
+  cv.scrollLeft = px * z - ox; cv.scrollTop = py * z - oy;
+  zv.textContent = Math.round(z * 100) + "%";
+  try {{ localStorage.setItem("kbMapZoom", String(z)); }} catch (_) {{}}
+}}
+const fit = () => setZ((cv.clientWidth - 14) / W);
+document.querySelectorAll(".zoom button").forEach(b => b.addEventListener("click", () => {{
+  const k = b.dataset.z; if (k === "in") setZ(z * 1.2); else if (k === "out") setZ(z / 1.2); else if (k === "fit") fit(); else setZ(1);
+}}));
+cv.addEventListener("wheel", ev => {{
+  if (!(ev.ctrlKey || ev.metaKey)) return;
+  ev.preventDefault(); const r = cv.getBoundingClientRect();
+  setZ(z * (ev.deltaY < 0 ? 1.1 : 1 / 1.1), ev.clientX - r.left, ev.clientY - r.top);
+}}, {{ passive: false }});
+let dragFrom = null, moved = false;
+cv.addEventListener("pointerdown", ev => {{ if (ev.button !== 0) return; dragFrom = [ev.clientX, ev.clientY, cv.scrollLeft, cv.scrollTop]; moved = false; }});
+window.addEventListener("pointermove", ev => {{
+  if (!dragFrom) return; const dx = ev.clientX - dragFrom[0], dy = ev.clientY - dragFrom[1];
+  if (Math.abs(dx) + Math.abs(dy) > 4) {{ moved = true; cv.classList.add("drag"); }}
+  if (moved) {{ cv.scrollLeft = dragFrom[2] - dx; cv.scrollTop = dragFrom[3] - dy; }}
+}});
+window.addEventListener("pointerup", () => {{ dragFrom = null; cv.classList.remove("drag"); }});
+document.addEventListener("keydown", ev => {{
+  if (ev.target.closest && ev.target.closest("input,textarea")) return;
+  if (ev.key === "+" || ev.key === "=") setZ(z * 1.2); else if (ev.key === "-") setZ(z / 1.2);
+  else if (ev.key === "0") fit(); else if (ev.key === "1") setZ(1); else if (ev.key === "Escape") hide();
+}});
+setZ(z);
 document.querySelectorAll(".node").forEach(n => {{
-  n.addEventListener("click", () => show(n.dataset.step));
+  n.addEventListener("click", () => {{ if (!moved) show(n.dataset.step); }});
   n.addEventListener("keydown", ev => {{ if (ev.key === "Enter" || ev.key === " ") {{ ev.preventDefault(); show(n.dataset.step); }} }});
 }});
 </script></body></html>

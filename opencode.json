@@ -14,6 +14,7 @@
       "git log*": "allow",
       "git show*": "allow",
       "git config user.name": "allow",
+      "git config user.email": "allow",
       "git remote*": "allow",
       "git branch*": "allow",
       "git checkout *": "allow",
