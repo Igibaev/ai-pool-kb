@@ -160,7 +160,7 @@ OPEN_Q = {"открыт", "ждёт бизнес", "возможно отвеч�
 GENERATED = {"context/process/_index.md", "journal/_index.md", "context/process/_map.svg", "context/process/_map.html"}
 SKIP_DIRS = {".git", "node_modules", "target", "build", "dist", ".venv", "venv", "__pycache__"}
 # Документация и инструкции содержат примеры ID — их нумерация не трогает.
-DOC_DIRS = {".claude", ".agents", ".opencode", ".gitlab", "tools", "docs"}
+DOC_DIRS = {".claude", ".agents", ".opencode", ".gitlab", "tools", "docs", "game"}
 
 
 # ---------- чтение файлов ----------

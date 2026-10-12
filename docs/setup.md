@@ -12,15 +12,22 @@ OpenCode тоже работает с этим репозиторием, в то
 
 ## 1. Создать репозиторий продукта
 
-1. Распакуйте `project-template.zip` в папку с именем продукта, например `C:\work\moy-produkt` или `~/work/moy-produkt`.
+1. Новый продукт — новый репозиторий из шаблона `kb-template`. На GitHub: «Use this template». Иначе — клон без истории шаблона:
+   ```
+   git clone --depth 1 https://github.com/adayigibaev-dev/kb-template moy-produkt
+   cd moy-produkt
+   rm -rf .git game
+   git init -b main
+   ```
+   Папка `game/` нужна только для игры — в продукте её удалите.
 2. В этой папке:
    ```
-   git init -b main
    git config user.name "Адай"
+   git config user.email "adai@company.kz"
    git add -A
    git commit -m "Шаблон проекта"
    ```
-   Имя в `user.name` — ровно то, которое будет в `team.md`. Настраивается для этого репозитория, глобальные настройки не трогает.
+   Имя и почту настройте для этого репозитория. Аналитик впишет их в `team.md`: агент узнаёт человека по почте, а если почты нет — по имени.
 3. Проверка:
    ```
    python3 tools/kb.py check
