@@ -1,9 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3 tools/kb.py:*)",
-      "Bash(python tools/kb.py:*)",
-      "Bash(py -3 tools/kb.py:*)",
+      "Bash(python3 kb/tools/kb.py:*)",
+      "Bash(python kb/tools/kb.py:*)",
+      "Bash(py -3 kb/tools/kb.py:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",

@@ -6,9 +6,9 @@
     "edit": "allow",
     "bash": {
       "*": "ask",
-      "python3 tools/kb.py *": "allow",
-      "python tools/kb.py *": "allow",
-      "py -3 tools/kb.py *": "allow",
+      "python3 kb/tools/kb.py *": "allow",
+      "python kb/tools/kb.py *": "allow",
+      "py -3 kb/tools/kb.py *": "allow",
       "git status*": "allow",
       "git diff*": "allow",
       "git log*": "allow",
