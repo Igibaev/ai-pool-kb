@@ -8,7 +8,7 @@ HERE = Path(__file__).resolve().parent
 TEMPLATE = Path(os.environ.get("SIM_TEMPLATE") or HERE.parent.parent / "kb-template")
 OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE / "out"
 if not (TEMPLATE / "tools" / "kb.py").exists():
-    raise SystemExit(f"Не найден шаблон: {TEMPLATE}. Склонируйте https://github.com/adayigibaev-dev/kb-template рядом с этим репозиторием или задайте SIM_TEMPLATE.")
+    raise SystemExit(f"Не найден шаблон: {TEMPLATE}. Склонируйте https://github.com/Igibaev/kb-template рядом с этим репозиторием или задайте SIM_TEMPLATE.")
 for _s in (sys.stdout, sys.stderr):
     try:
         _s.reconfigure(encoding="utf-8")

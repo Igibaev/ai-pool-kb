@@ -2,7 +2,7 @@
 
 Процесс разработки под ИИ-агентов: один пул (разработчики, тестировщики, аналитики, веб), канбан, работа от спецификаций. Путь работы: карта процессов → руты (шаги карты) → декомпозиты → спеки → код.
 
-**Сам шаблон — отдельный репозиторий [`adayigibaev-dev/kb-template`](https://github.com/adayigibaev-dev/kb-template).** Новый продукт и игра создаются из него; агента (OpenCode, Claude Code) запускают из его корня. Здесь — то, что не должно попадать в репозиторий продукта.
+**Сам шаблон — отдельный репозиторий [`Igibaev/kb-template`](https://github.com/Igibaev/kb-template).** Новый продукт и игра создаются из него; агента (OpenCode, Claude Code) запускают из его корня. Здесь — то, что не должно попадать в репозиторий продукта.
 
 ## Что здесь
 
@@ -19,7 +19,7 @@ game/                        ответы ведущего для игры (vedu
 Нужны Python 3.9+, git и клон `kb-template` рядом с этим репозиторием:
 
 ```
-git clone https://github.com/adayigibaev-dev/kb-template
+git clone https://github.com/Igibaev/kb-template
 git clone https://github.com/igibaev/ai-pool-kb
 cd ai-pool-kb/sim
 python3 build.py              # другой путь к шаблону: SIM_TEMPLATE=/путь python3 build.py
