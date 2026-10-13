@@ -49,6 +49,10 @@
                                               материалы в текст: PDF, DOCX, PPTX, XLSX (+CSV по листам), архивы, .vtt/.srt →
                                               kb/inbox/_md/; оригиналы не трогает; помечает сканы и расшифровки встреч
     python3 kb/tools/kb.py peek <файл> [строк]   паспорт большого файла: размер, колонки, частые значения, первые строки с номерами
+    python3 kb/tools/kb.py map apply [план] [--check]
+                                              пересобрать карту по плану «Было → Станет» (kb/context/process/_map-plan.md):
+                                              новые шаги, переименования, объединения, порядок, схема, «Изменения структуры»
+    python3 kb/tools/kb.py map sync           после ручной правки таблицы «Шаги»: создать недостающие шаги, обновить порядок
     python3 kb/tools/kb.py map                   нарисовать карту процессов: _map.svg (картинка) и _map.html (интерактивная схема)
                                               со статусами, владельцами, вопросами и декомпозитами каждого шага
     python3 kb/tools/kb.py after-merge           assign-ids + index: то, что делает CI после слияния (для соло-режима без CI)
@@ -372,6 +376,9 @@ def cmd_check() -> int:
                 continue
             seen_files.add(p)
             text = p.read_text(encoding="utf-8")
+            if p.name == "_map.md":   # «Изменения структуры» — история: там законно упоминаются убранные шаги
+                text = re.sub(r"^## Изменения структуры\n.*?(?=^## |\Z)",
+                              lambda m: "\n" * m.group(0).count("\n"), text, flags=re.M | re.S)
             for n, line in meaningful_lines(text):
                 for ref in ID_RE.findall(line):
                     if ref in defined:
@@ -743,6 +750,11 @@ def cmd_new(kind: str, slug: str) -> int:
 def next_free_id(prefix: str, kind: str) -> str:
     used = [int(m.group(1)) for it in load(kind)
             if (m := re.match(rf"^{prefix}-(\d{{2}})$", str(it["fm"].get("id", ""))))]
+    if kind == "step":   # номера убранных и объединённых шагов остаются в «Изменениях структуры» — не переиспользуем
+        mp = KB / "context/process/_map.md"
+        if mp.exists():
+            log = section_text(mp.read_text(encoding="utf-8"), "Изменения структуры")
+            used += [int(x) for x in re.findall(r"\bPM-(\d{2})\b", log)]
     return f"{prefix}-{max(used, default=0) + 1:02d}"
 
 
@@ -2214,6 +2226,8 @@ def main(argv: list[str]) -> int:
         return cmd_changes(args[1], args[3] if len(args) == 4 and args[2] == "--only" else None)
     if cmd == "peek" and args:
         return cmd_peek(args[0], int(args[1]) if len(args) > 1 and args[1].isdigit() else 10)
+    if cmd == "map" and args and args[0] in ("apply", "sync"):
+        return tool("kb_mapplan").run(sys.modules[__name__], args)
     if cmd == "map":
         return cmd_map()
     if cmd == "after-merge":

@@ -671,3 +671,107 @@ def test_pd_mode_contour_allows_raw_materials_but_not_steps(repo, kb):
                     encoding="utf-8")
     rc, out = kb("check")
     assert rc == 1 and "PM-01" in out and "персональные данные" in out
+
+
+# ---------- пересборка карты одним пакетом ----------
+MAP_MD = """# Карта процессов: тест
+
+## Главный объект
+Надпись
+Появляется: x
+Закрывается: y
+
+## Схема
+```mermaid
+flowchart LR
+  PM01["PM-01 Регистрация"] --> PM02["PM-02 Сверка"]
+  PM02 --> PM03["PM-03 Инвойсы"]
+```
+
+## Шаги
+| ID | Шаг | Вход | Выход | Состояние объекта после шага |
+|---|---|---|---|---|
+| PM-00 | Каркас и общие части | — | — | — |
+| PM-01 | Регистрация | a | b | c |
+| PM-02 | Сверка | a | b | c |
+| PM-03 | Инвойсы | a | b | c |
+
+## Изменения структуры
+| Дата | Что изменилось | Почему | Вопрос |
+|---|---|---|---|
+"""
+
+
+def _three_steps(repo, kb):
+    (repo / "kb" / "context" / "process" / "_map.md").write_text(MAP_MD, encoding="utf-8")
+    for sid, slug, name in (("PM-01", "reg", "Регистрация"), ("PM-02", "sverka", "Сверка"), ("PM-03", "invoysy", "Инвойсы")):
+        mk_step(repo, sid, slug, шаг=name)
+
+
+def test_map_apply_new_rename_merge(repo, kb):
+    _three_steps(repo, kb)
+    (repo / "kb" / "journal" / "questions").mkdir(parents=True, exist_ok=True)
+    mk_question(repo, "pro-invoysy", раздел="PM-03", заголовок="Про инвойсы")
+    plan = repo / "kb" / "context" / "process" / "_map-plan.md"
+    plan.write_text("""# План
+Основание: kb/materials/meetings/2026-10-14-smezhniki.md
+
+| Было | Станет | Что | Почему (источник) |
+|---|---|---|---|
+| PM-01 Регистрация | PM-01 Регистрация надписей | переименовать | строка 3 |
+| PM-02 Сверка | PM-02 Сверка + N1 Возвраты | разделить | строка 10 |
+| PM-03 Инвойсы | PM-02 | объединить | строка 12 |
+
+```mermaid
+flowchart LR
+  PM01["PM-01 Регистрация надписей"] --> PM02["PM-02 Сверка"]
+  PM02 --> N1["N1 Возвраты"]
+```
+""", encoding="utf-8")
+    rc, out = kb("map", "apply", "--check", user="Гульнара")
+    assert rc == 0 and "новый шаг N1" in out and plan.exists()
+    rc, out = kb("map", "apply", user="Мадина")
+    assert rc == 1 and "аналитик" in out
+    rc, out = kb("map", "apply", user="Гульнара")
+    assert rc == 0, out
+    proc = repo / "kb" / "context" / "process"
+    assert not (proc / "PM-03-invoysy.md").exists()
+    new = list(proc.glob("PM-04-*.md"))
+    assert new and "шаг: Возвраты" in new[0].read_text(encoding="utf-8")
+    m = (proc / "_map.md").read_text(encoding="utf-8")
+    assert 'PM04["PM-04 Возвраты"]' in m and "| PM-01 | Регистрация надписей |" in m
+    assert "PM-03 «Инвойсы» объединён в PM-02" in m
+    q = (repo / "kb" / "journal" / "questions" / "Q-new-pro-invoysy.md").read_text(encoding="utf-8")
+    assert "раздел: PM-02" in q
+    assert "порядок: 1 из 3" in (proc / "PM-01-reg.md").read_text(encoding="utf-8")
+    assert not plan.exists()
+    rc, out = kb("new", "step", "eshche", "шаг=Ещё", user="Гульнара")
+    assert "PM-05" in out                     # PM-03 не переиспользуется: он в «Изменениях структуры»
+    rc, out = kb("check")
+    assert rc == 0, out
+
+
+def test_map_apply_refuses_taken_root_and_asks_owner(repo, kb):
+    _three_steps(repo, kb)
+    rc, out = kb("set", "PM-03", "владелец рута=Тимур", user="Гульнара")
+    plan = repo / "kb" / "context" / "process" / "_map-plan.md"
+    plan.write_text("| Было | Станет | Что | Почему (источник) |\n|---|---|---|---|\n| PM-03 Инвойсы | PM-02 | объединить | x |\n",
+                    encoding="utf-8")
+    rc, out = kb("map", "apply", user="Гульнара")
+    assert rc == 0, out
+    assert (repo / "kb" / "context" / "process" / "PM-03-invoysy.md").exists()
+    assert "вопрос владельцу: Q-new-merge-pm-03" in out
+
+
+def test_map_sync_creates_new_rows_and_deletes_nothing(repo, kb):
+    _three_steps(repo, kb)
+    mp = repo / "kb" / "context" / "process" / "_map.md"
+    t = mp.read_text(encoding="utf-8").replace("| PM-03 | Инвойсы | a | b | c |",
+                                                "| N1 | Возвраты | a | b | c |\n| PM-03 | Инвойсы | a | b | c |")
+    t = t.replace("| PM-02 | Сверка | a | b | c |\n", "")
+    mp.write_text(t, encoding="utf-8")
+    rc, out = kb("map", "sync", user="Гульнара")
+    assert rc == 0, out
+    assert "N1 → PM-04" in out and "PM-02" in out and "удалить или объединить" in out
+    assert (repo / "kb" / "context" / "process" / "PM-02-sverka.md").exists()
+    assert "| PM-04 | Возвраты |" in mp.read_text(encoding="utf-8")
