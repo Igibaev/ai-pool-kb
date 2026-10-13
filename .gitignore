@@ -3,3 +3,4 @@ __pycache__/
 .DS_Store
 reports/
 .kb/
+kb/inbox/_md/

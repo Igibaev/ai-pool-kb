@@ -538,3 +538,79 @@ def test_whoami_lists_questions_addressed_to_owner(repo, kb):
     assert "ВОПРОСЫ К ВАМ" in out and "Q-new-klyuch" in out and "вы владелец раздела" in out
     rc, out = kb("whoami")          # автор, Мадина, свой вопрос себе не задаёт
     assert "ВОПРОСЫ К ВАМ" not in out
+
+
+# ---------- convert: материалы в текст ----------
+import zipfile as _zip
+
+
+def _docx(path, paragraphs, table=None):
+    W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    body = "".join(f"<w:p><w:r><w:t>{t}</w:t></w:r></w:p>" for t in paragraphs)
+    if table:
+        rows = "".join("<w:tr>" + "".join(f"<w:tc><w:p><w:r><w:t>{c}</w:t></w:r></w:p></w:tc>" for c in r) + "</w:tr>"
+                       for r in table)
+        body += f"<w:tbl>{rows}</w:tbl>"
+    with _zip.ZipFile(path, "w") as z:
+        z.writestr("word/document.xml", f'<?xml version="1.0"?><w:document {W}><w:body>{body}</w:body></w:document>')
+
+
+def _text_pdf(path, pages):
+    """Минимальный PDF с текстом (латиница, Helvetica) — без внешних библиотек."""
+    objs = ["<< /Type /Catalog /Pages 2 0 R >>", None, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>"]
+    kids = []
+    for text in pages:
+        stream = f"BT /F1 12 Tf 20 100 Td ({text}) Tj ET".encode()
+        objs.append(f"<< /Length {len(stream)} >>\nstream\n{stream.decode()}\nendstream")
+        objs.append(f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Resources << /Font << /F1 3 0 R >> >> /Contents {len(objs)} 0 R >>")
+        kids.append(f"{len(objs)} 0 R")
+    objs[1] = f"<< /Type /Pages /Kids [{' '.join(kids)}] /Count {len(kids)} >>"
+    out, offs = b"%PDF-1.4\n", []
+    for i, o in enumerate(objs, 1):
+        offs.append(len(out))
+        out += f"{i} 0 obj\n{o}\nendobj\n".encode()
+    xref = len(out)
+    out += f"xref\n0 {len(objs) + 1}\n0000000000 65535 f \n".encode()
+    out += "".join(f"{o:010d} 00000 n \n" for o in offs).encode()
+    out += f"trailer\n<< /Size {len(objs) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode()
+    path.write_bytes(out)
+
+
+def test_convert_docx_zip_meeting_and_keeps_originals(repo, kb):
+    inbox = repo / "kb" / "inbox"
+    inbox.mkdir(exist_ok=True)
+    _docx(inbox / "koncept.docx", ["Zvonim posle 10 dney"], table=[["Stadiya", "Srok"], ["SMS", "1 den"]])
+    with _zip.ZipFile(inbox / "skript.zip", "w") as z:
+        z.writestr("sborka/run.py", "print('paket')\n")
+    (inbox / "vstrecha-smezhniki.txt").write_text(
+        "\n".join(f"[00:0{i}:1{i}] Спикер {i % 2 + 1}: реплика {i}" for i in range(8)), encoding="utf-8")
+    (inbox / "reglament.txt").write_text("Пункт 1. Претензия при долге больше 10 000.\nПункт 2. SMS.\n", encoding="utf-8")
+    before = {p.name: p.read_bytes() for p in inbox.iterdir() if p.is_file()}
+    rc, out = kb("convert")
+    assert rc == 0, out
+    md = inbox / "_md"
+    d = (md / "koncept.docx.md").read_text(encoding="utf-8")
+    assert "Оригинал: kb/inbox/koncept.docx" in d and "| SMS | 1 den |" in d
+    assert (md / "skript.zip" / "sborka" / "run.py").read_text(encoding="utf-8") == "print('paket')\n"
+    assert "Тип: похоже на расшифровку встречи" in (md / "vstrecha-smezhniki.txt.md").read_text(encoding="utf-8")
+    assert "ПОХОЖЕ НА РАСШИФРОВКУ ВСТРЕЧИ" in out
+    assert not (md / "reglament.txt.md").exists() and (md / "reglament.txt").exists()   # обычный текст — копия как есть
+    assert {p.name: p.read_bytes() for p in inbox.iterdir() if p.is_file()} == before   # оригиналы не тронуты
+    rc, out = kb("convert")
+    assert "Нового нет" in out
+    rc, out = kb("peek", "kb/inbox/koncept.docx")
+    assert rc == 1 and "convert" in out
+
+
+def test_convert_pdf_text_and_scan(repo, kb):
+    pytest.importorskip("pypdf")
+    inbox = repo / "kb" / "inbox"
+    inbox.mkdir(exist_ok=True)
+    _text_pdf(inbox / "otvet.pdf", ["Otvet BPI: delo 123 zakryto", "Stranica dva"])
+    _text_pdf(inbox / "scan.pdf", [""])
+    rc, out = kb("convert")
+    assert rc == 0, out
+    t = (inbox / "_md" / "otvet.pdf.md").read_text(encoding="utf-8")
+    assert "## стр. 1" in t and "delo 123" in t and "Страниц: 2" in t
+    s = (inbox / "_md" / "scan.pdf.md").read_text(encoding="utf-8")
+    assert "СКАН: текста нет" in s and "НЕ ПРОЧИТАНО: 1" in out

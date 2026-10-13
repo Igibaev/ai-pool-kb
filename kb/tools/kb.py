@@ -43,6 +43,9 @@
     python3 kb/tools/kb.py similar "<текст>" ["<другая формулировка>" …]
                                               похожие вопросы, допущения, решения, риски и строки фактов — для поиска ответа и дублей
     python3 kb/tools/kb.py changes --since <хеш|дата> [--only <путь>] что изменилось в базе знаний с коммита: коммиты и добавленные/удалённые строки
+    python3 kb/tools/kb.py convert [kb/inbox] [--ocr] [--force]
+                                              материалы в текст: PDF, DOCX, PPTX, XLSX (+CSV по листам), архивы, .vtt/.srt →
+                                              kb/inbox/_md/; оригиналы не трогает; помечает сканы и расшифровки встреч
     python3 kb/tools/kb.py peek <файл> [строк]   паспорт большого файла: размер, колонки, частые значения, первые строки с номерами
     python3 kb/tools/kb.py map                   нарисовать карту процессов: _map.svg (картинка) и _map.html (интерактивная схема)
                                               со статусами, владельцами, вопросами и декомпозитами каждого шага
@@ -392,6 +395,8 @@ def cmd_check() -> int:
                 t = line.strip()
                 if not re.match(r"^(-|\d+\.)\s+\S", t) or has_placeholder(t):
                     continue
+                if "inbox/_md/" in t:
+                    warnings.append(f"{rel(it['path'])} «{sec}»: факт ссылается на kb/inbox/_md/ — скопируйте материал в kb/materials/ и сошлитесь на копию")
                 if not FACT_STATUS_RE.search(t):
                     warnings.append(f"{rel(it['path'])} «{sec}»: факт без статуса в скобках — «{t[:70]}»")
 
@@ -1121,6 +1126,10 @@ def cmd_peek(path: str, rows: int = 10) -> int:
         return 1
     size = p.stat().st_size
     print(f"== {path}: {size / 1024:.1f} КБ")
+    if p.suffix.lower() in (".pdf", ".docx", ".pptx", ".zip", ".7z", ".doc", ".rar", ".vtt", ".srt"):
+        print("Этот формат peek не читает. Сначала: python3 kb/tools/kb.py convert — "
+              "текст появится в kb/inbox/_md/, его и читайте.")
+        return 1
     if p.suffix.lower() in (".xlsx", ".xlsm"):
         try:
             import openpyxl
@@ -2176,6 +2185,10 @@ def main(argv: list[str]) -> int:
         return cmd_map()
     if cmd == "after-merge":
         return cmd_after_merge()
+    if cmd == "convert":
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import kb_convert
+        return kb_convert.run(args, sys.modules[__name__])
     if cmd == "activity":
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import kb_activity
