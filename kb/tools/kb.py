@@ -21,6 +21,15 @@
     python3 kb/tools/kb.py take <PM-XX|SYS-XX>   взять рут или систему себе (проверяет готовность и лимит)
     python3 kb/tools/kb.py release <PM-XX|SYS-XX> "<почему>"
                                               вернуть рут в «Готов к взятию» или отпустить систему
+    python3 kb/tools/kb.py new card PM-XX <slug> заголовок="…" "Что выяснить=…" ["С чего начать=…"] ["Готово, когда=…"] [направления=[5,8]]
+                                              карточка шага для параллельного разбора (владелец рута или аналитик)
+    python3 kb/tools/kb.py cards [PM-XX]      открытые карточки рутов в «Разборе» или все карточки рута
+    python3 kb/tools/kb.py take|release PM-XX-KNN ["почему"]
+                                              взять или вернуть карточку (рут в «Разборе», лимит из team.md)
+    python3 kb/tools/kb.py fact PM-XX-KNN "<Раздел шага>" "<текст>" "<источник>" <статус>
+                                              находка в карточку (пишет тот, кто взял); сдать — set PM-XX-KNN статус="На приёмке"
+    python3 kb/tools/kb.py card accept|return PM-XX-KNN ["что доделать"]
+                                              владелец рута: перенести находки в шаг / вернуть в работу
     python3 kb/tools/kb.py ready-check <PM-XX>   готов ли шаг к взятию: что ещё должен заполнить аналитик
     python3 kb/tools/kb.py show <Q-…>          вопрос целиком для экрана: текст, тип, кто ответит, контекст, ответ
     python3 kb/tools/kb.py whoami                кто я: роли, стиль общения, режим, мои руты, новые ответы, вопросы, допущения, риски
@@ -136,6 +145,7 @@ def has_placeholder(line: str) -> bool:
 ID_RE = re.compile(
     r"(?<![\w-])("
     r"GD-PM-\d{2}-\d{3}"
+    r"|PM-\d{2}-K\d{2}"
     r"|PM-\d{2}-\d{2}"
     r"|PM-\d{2}"
     r"|SYS-\d{2}"
@@ -182,6 +192,12 @@ KINDS = {
         "id": r"^R-(\d{3}|new-" + SLUG + r")$",
         "required": ["id", "статус", "раздел", "автор", "создан", "следит", "вероятность", "влияние"],
         "statuses": ["открыт", "снижен", "случился", "закрыт"],
+    },
+    "card": {
+        "glob": "context/process/cards/PM-*-K*.md",
+        "id": r"^PM-\d{2}-K\d{2}$",
+        "required": ["id", "рут", "статус", "взял", "создал", "создана"],
+        "statuses": ["Открыта", "В работе", "На приёмке", "Принята"],
     },
     "spec": {
         "glob": "specs/PM-*/PM-*/spec.md",
@@ -257,6 +273,8 @@ def rel(p: Path) -> str:
 def load(kind: str) -> list[dict]:
     items = []
     for p in sorted(KB.glob(KINDS[kind]["glob"])):
+        if kind == "step" and "cards" in p.relative_to(KB).parts:
+            continue
         if p.name.startswith("_") or "_template" in p.parts:
             continue
         text = p.read_text(encoding="utf-8")
@@ -504,6 +522,7 @@ def cmd_check() -> int:
                 errors.append(f"{rel(it['path'])}: напарник совпадает с владельцем")
 
     tool("kb_meetings").check(sys.modules[__name__], errors, warnings)
+    tool("kb_cards").check(sys.modules[__name__], all_items, errors, warnings)
     for w in warnings:
         print(f"ПРЕДУПРЕЖДЕНИЕ  {w}")
     for e in errors:
@@ -608,6 +627,14 @@ def cmd_index() -> int:
         done = sum(1 for d in dec if specs.get(d) == "Готово")
         lines.append(f"| {rid} | {fm.get('шаг', '')} | {' + '.join(pair_of(fm)) or fm.get('владелец рута', '')} | {fm.get('статус', '')} "
                      f"| {oq} | {oa} | {done} / {len(dec)} |")
+    cards = load("card")
+    if cards:
+        kc = tool("kb_cards")
+        lines += ["", "## Карточки разбора", "", "| Карточка | Рут | Тема | Статус | Взял |", "|---|---|---|---|---|"]
+        for c in sorted(cards, key=lambda x: x["fm"].get("id", "")):
+            fm = c["fm"]
+            lines.append(f"| [{fm.get('id')}]({rel(c['path']).split('/', 3)[3]}) | {fm.get('рут')} | {first_heading(c['text'])} "
+                         f"| {fm.get('статус')} | {kc.taker(fm) or '—'} |")
     write(KB / "context/process/_index.md", "\n".join(lines) + "\n")
 
     # журнал
@@ -925,6 +952,20 @@ def section_text(text: str, heading: str) -> str:
 
 def cmd_context(ident: str) -> int:
     ident = ident.upper()
+    if re.fullmatch(r"PM-\d{2}-K\d{2}", ident):
+        kc = tool("kb_cards")
+        c = kc.card_by_id(sys.modules[__name__], ident)
+        if not c:
+            print(f"{ident} не найден")
+            return 1
+        rc = cmd_context(c["fm"].get("рут", ""))
+        who = kc.taker(c["fm"])
+        verdict = "вы взяли её, пишете в карточку сами" if who == git_user() else \
+            f"взял(а) {who} — правки через неё" if who else "никто не взял: python3 kb/tools/kb.py take " + ident
+        print(f"\n== Карточка {ident}: {c['fm'].get('статус')}; {verdict}\n"
+              "Находки — командой fact в карточку, не в файл шага: шаг пишет владелец рута (card accept).")
+        print(f"\n== Файл {rel(c['path'])}\n" + c["text"].rstrip())
+        return rc
     kind = "step" if ident.startswith("PM-") else "system" if ident.startswith("SYS-") else None
     if not kind:
         print("Укажите рут PM-XX или систему SYS-XX")
@@ -978,6 +1019,15 @@ def cmd_context(ident: str) -> int:
                      and not l.startswith(("|---", "| Роль", "| Система", "Как главный", "С чего начать"))])
             fill.append(f"{sec}: {n if n else 'пусто'}")
         out.append("\n== Заполненность (строк по разделам)\n" + "; ".join(fill))
+        kc = tool("kb_cards")
+        cs = kc.cards_of(sys.modules[__name__], ident)
+        if cs:
+            out.append("\n== Карточки (" + kc.summary_line(sys.modules[__name__], ident) + " принято)")
+            for c in cs:
+                what = " ".join(l.strip() for l in section_text(c["text"], "Что выяснить").splitlines()
+                                if l.strip() and not is_placeholder(l))[:120]
+                out.append(f"{c['fm'].get('id')} [{c['fm'].get('статус')}{', ' + kc.taker(c['fm']) if kc.taker(c['fm']) else ''}] "
+                           f"{first_heading(c['text'])}" + (f" — {what}" if what else ""))
     out.append(f"\n== Файл {rel(it['path'])}\n" + it["text"].rstrip())
 
     if kind == "system":
@@ -1251,6 +1301,9 @@ def roots_data() -> dict:
         out[rid] = {
             "шаг": fm.get("шаг", ""), "владелец": " + ".join(pair_of(fm)) or fm.get("владелец рута", ""), "статус": fm.get("статус", ""),
             "path": rel(st["path"]), "зачем": why, "боль": pain, "нарезка": slicing,
+            "карточки": [[c["fm"].get("id"), first_heading(c["text"]), c["fm"].get("статус"),
+                          str(c["fm"].get("взял", "")).split("#")[0].strip()]
+                         for c in load("card") if c["fm"].get("рут") == rid],
             "q": [[q["fm"].get("id"), first_heading(q["text"]), q["fm"].get("статус")] for q in questions
                   if q["fm"].get("раздел") == rid and q["fm"].get("статус") in OPEN_Q],
             "a": [], "r": [],
@@ -1313,6 +1366,8 @@ def resolve(ident: str) -> Path | None:
     for p in (ROOT / ident, KB / kb_rel(ident)):
         if p.is_file():
             return p
+    if re.match(r"^PM-\d{2}-K\d{2}$", ident):
+        return next((c["path"] for c in load("card") if c["fm"].get("id") == ident), None)
     if re.match(r"^(PM-\d{2}|SYS-\d{2})$", ident):
         kind = "step" if ident.startswith("PM") else "system"
         for it in load(kind):
@@ -1329,6 +1384,8 @@ def resolve(ident: str) -> Path | None:
 
 def kind_of(path: Path) -> str | None:
     r = rel(path)
+    if path in KB.glob(KINDS["card"]["glob"]):
+        return "card"
     for k, spec in KINDS.items():
         if path in KB.glob(spec["glob"]):
             return k
@@ -1410,6 +1467,11 @@ def parse_pairs(args: list[str]) -> tuple[dict, dict, str | None, list[str]]:
 
 
 def cmd_new_filled(kind: str, slug: str, extra: list[str]) -> int:
+    if kind == "card":
+        if not extra:
+            print("Как: new card PM-XX <slug> заголовок=\"<тема>\" \"Что выяснить=…\"")
+            return 2
+        return tool("kb_cards").new_card(sys.modules[__name__], slug, extra[0], extra[1:])
     slug = slugify(slug)
     if kind in ("step", "system"):
         return cmd_new_step_or_system(kind, slug, extra)
@@ -1463,6 +1525,11 @@ def cmd_set(ident: str, extra: list[str]) -> int:
         force = extra[i + 1] if i + 1 < len(extra) else ""
         extra = extra[:i] + extra[i + 2:]
     fields, _, _, bad = parse_pairs(extra)
+    if "статус" in fields and kind_of(path) == "card":
+        err = tool("kb_cards").before_status(sys.modules[__name__], path, fields["статус"])
+        if err:
+            print(f"ОШИБКА  {err}")
+            return 1
     if fields.get("статус") == "Готов к взятию" and kind_of(path) == "step":
         miss = ready_missing(path.read_text(encoding="utf-8"))
         if miss:
@@ -1614,6 +1681,18 @@ def cmd_whoami() -> int:
     my_roots = {it["fm"].get("id") for it in load("step") if user in pair_of(it["fm"])}
     sysm = [it["fm"].get("id") for it in load("system") if it["fm"].get("владелец раздела в пуле") == user]
     print("Руты: " + (", ".join(mine) or "—") + "; системы: " + (", ".join(sysm) or "—"))
+    kc = tool("kb_cards")
+    me = sys.modules[__name__]
+    my_cards = kc.mine(me, user)
+    print("Мои карточки: " + (", ".join(f"{c['fm'].get('id')} [{c['fm'].get('статус')}]" for c in my_cards) or "—"))
+    in_explore = {it["fm"].get("id") for it in load("step") if it["fm"].get("статус") == "Разбор"}
+    open_cards = [c for c in load("card") if c["fm"].get("статус") == "Открыта" and c["fm"].get("рут") in in_explore]
+    if open_cards and len(my_cards) < kc.limit(me):
+        print(f"Можно взять карточек: {len(open_cards)} — python3 kb/tools/kb.py cards")
+    owned = {it["fm"].get("id") for it in load("step") if it["fm"].get("владелец рута") == user}
+    waiting = [c["fm"].get("id") for c in load("card") if c["fm"].get("статус") == "На приёмке" and c["fm"].get("рут") in owned]
+    if waiting:
+        print("НОВОЕ: карточки ждут вашей приёмки (python3 kb/tools/kb.py card accept …): " + ", ".join(waiting))
     wip = wip_of(user)
     ready_n = len([it for it in load("step") if it["fm"].get("статус") == "Готов к взятию"])
     print(f"В работе: {len(wip)} из лимита {wip_limit()}; готовых к взятию рутов: {ready_n}"
@@ -2180,7 +2259,7 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 0
     cmd, args = argv[0], argv[1:]
-    if args and re.fullmatch(r"(?i)(pm|sys)-\d{2}", args[0]):
+    if args and re.fullmatch(r"(?i)(pm|sys)-\d{2}(-k\d{2})?", args[0]):
         args[0] = args[0].upper()
     elif args and re.fullmatch(r"(?i)[qadr]-(\d{3}|new-[\w-]+)", args[0]):
         args[0] = args[0][0].upper() + args[0][1:]
@@ -2194,6 +2273,16 @@ def main(argv: list[str]) -> int:
         return cmd_ready()
     if cmd == "ready-check" and len(args) == 1:
         return cmd_ready_check(args[0])
+    if cmd in ("take", "release") and args and re.fullmatch(r"PM-\d{2}-K\d{2}", args[0]):
+        kc = tool("kb_cards")
+        return kc.take(sys.modules[__name__], args[0]) if cmd == "take" else \
+            kc.release(sys.modules[__name__], args[0], args[1] if len(args) > 1 else "без причины")
+    if cmd == "cards":
+        return tool("kb_cards").cmd_cards(sys.modules[__name__], args)
+    if cmd == "card" and len(args) >= 2 and args[0] in ("accept", "return"):
+        kc, ident = tool("kb_cards"), args[1].upper()
+        return kc.accept(sys.modules[__name__], ident) if args[0] == "accept" else \
+            kc.return_card(sys.modules[__name__], ident, args[2] if len(args) > 2 else "без причины")
     if cmd == "take" and args:
         return cmd_take(args[0], "--force" in args)
     if cmd == "release" and len(args) in (1, 2):
@@ -2212,6 +2301,8 @@ def main(argv: list[str]) -> int:
         return cmd_set(args[0], args[1:])
     if cmd == "append" and len(args) == 3:
         return cmd_append(*args)
+    if cmd == "fact" and len(args) == 5 and re.fullmatch(r"PM-\d{2}-K\d{2}", args[0]):
+        return tool("kb_cards").fact(sys.modules[__name__], *args)
     if cmd == "fact" and len(args) == 5:
         return cmd_fact(*args)
     if cmd == "assign-ids":

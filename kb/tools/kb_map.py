@@ -412,6 +412,7 @@ function show(id) {{
   <h3>Открытые вопросы</h3>${{list(r.q, x => `<li><span class="k">${{e(x[0])}}</span> ${{e(x[1])}} <i>(${{e(x[2])}})</i></li>`)}}
   <h3>Допущения</h3>${{list(r.a, x => `<li><span class="k">${{e(x[0])}}</span> ${{e(x[1])}} — до ${{e(x[2])}}</li>`)}}
   <h3>Риски</h3>${{list(r.r, x => `<li><span class="k">${{e(x[0])}}</span> ${{e(x[1])}} — влияние ${{e(x[2])}}</li>`)}}
+  <h3>Карточки разбора</h3>${{list(r["карточки"] || [], x => `<li><span class="k">${{e(x[0])}}</span> ${{e(x[1])}} <i>(${{e(x[2])}}${{x[3] && x[3] !== "не назначен" ? ", " + e(x[3]) : ""}})</i></li>`)}}
   <h3>Декомпозиты</h3>${{list(r["нарезка"], x => `<li><span class="k">${{e(x[0])}}</span> ${{e(x[1])}}</li>`)}}`;
 }}
 function hide() {{ document.getElementById("grid").classList.remove("open"); document.querySelectorAll(".node").forEach(n => n.classList.remove("sel")); }}

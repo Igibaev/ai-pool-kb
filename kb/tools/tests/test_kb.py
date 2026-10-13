@@ -775,3 +775,70 @@ def test_map_sync_creates_new_rows_and_deletes_nothing(repo, kb):
     assert "N1 → PM-04" in out and "PM-02" in out and "удалить или объединить" in out
     assert (repo / "kb" / "context" / "process" / "PM-02-sverka.md").exists()
     assert "| PM-04 | Возвраты |" in mp.read_text(encoding="utf-8")
+
+
+# ---------- карточки шага ----------
+def _root_in_explore(repo, kb):
+    mk_step(repo, "PM-01", "reg")
+    rc, out = kb("set", "PM-01", "владелец рута=Тимур", "статус=Готов к взятию", "--force", "тест", user="Гульнара")
+    rc, out = kb("set", "PM-01", "статус=Разбор", user="Тимур")
+    assert rc == 0, out
+
+
+def test_cards_full_cycle(repo, kb):
+    mk_step(repo, "PM-01", "reg")
+    rc, out = kb("new", "card", "PM-01", "isklyucheniya", "заголовок=Исключения по выпискам",
+                 "Что выяснить=Какие бывают исключения и сколько их", user="Мадина")
+    assert rc == 1 and "владелец рута" in out                      # не владелец и не аналитик
+    rc, out = kb("new", "card", "PM-01", "isklyucheniya", "заголовок=Исключения по выпискам",
+                 "Что выяснить=Какие бывают исключения и сколько их", "направления=[5,8]", user="Гульнара")
+    assert rc == 0 and "PM-01-K01" in out, out
+    rc, out = kb("take", "pm-01-k01", user="Мадина")
+    assert rc == 1 and "«Разборе»" in out                          # рут ещё не в разборе
+    rc, out = kb("set", "PM-01", "владелец рута=Тимур", user="Гульнара")
+    rc, out = kb("set", "PM-01", "статус=Разбор", "--force", "тест", user="Тимур")
+    rc, out = kb("take", "PM-01-K01", user="Мадина")
+    assert rc == 0, out
+    rc, out = kb("fact", "PM-01-K01", "Исключения", "Оплата без номера договора", "kb/materials/x.csv, строка 4", "подтверждено",
+                 user="Тимур")
+    assert rc == 1 and "пишет тот, кто её взял" in out
+    rc, out = kb("set", "PM-01-K01", "статус=На приёмке", user="Мадина")
+    assert rc == 1 and "нечего" in out                             # пустую не сдать
+    rc, out = kb("fact", "PM-01-K01", "Исключения", "Оплата без номера договора", "kb/materials/x.csv, строка 4", "подтверждено",
+                 user="Мадина")
+    assert rc == 0, out
+    rc, out = kb("set", "PM-01-K01", "статус=На приёмке", user="Мадина")
+    assert rc == 0, out
+    rc, out = kb("whoami", user="Тимур")
+    assert "карточки ждут вашей приёмки" in out and "PM-01-K01" in out
+    rc, out = kb("card", "accept", "PM-01-K01", user="Мадина")
+    assert rc == 1                                                 # принимает только владелец рута
+    rc, out = kb("card", "accept", "PM-01-K01", user="Тимур")
+    assert rc == 0, out
+    step = (repo / "kb" / "context" / "process" / "PM-01-reg.md").read_text(encoding="utf-8")
+    assert "Оплата без номера договора (kb/materials/x.csv, строка 4, подтверждено) [PM-01-K01]" in step
+    card = next((repo / "kb" / "context" / "process" / "cards").glob("PM-01-K01-*.md")).read_text(encoding="utf-8")
+    assert "статус: Принята" in card
+    rc, out = kb("context", "PM-01")
+    assert "== Карточки (1/1 принято)" in out
+    rc, out = kb("index")
+    assert "PM-01-K01" in (repo / "kb" / "context" / "process" / "_index.md").read_text(encoding="utf-8")
+    rc, out = kb("check")
+    assert rc == 0, out
+
+
+def test_card_limit_and_broken_card(repo, kb):
+    mk_step(repo, "PM-01", "reg")
+    rc, out = kb("set", "PM-01", "владелец рута=Тимур", user="Гульнара")
+    rc, out = kb("set", "PM-01", "статус=Разбор", "--force", "тест", user="Тимур")
+    for i in range(3):
+        rc, out = kb("new", "card", "PM-01", f"k{i}", f"заголовок=Тема {i}", "Что выяснить=что-то", user="Тимур")
+        assert rc == 0, out
+    assert kb("take", "PM-01-K01", user="Мадина")[0] == 0
+    assert kb("take", "PM-01-K02", user="Мадина")[0] == 0
+    rc, out = kb("take", "PM-01-K03", user="Мадина")
+    assert rc == 1 and "лимит 2" in out
+    c3 = next((repo / "kb" / "context" / "process" / "cards").glob("PM-01-K03-*.md"))
+    c3.write_text(c3.read_text(encoding="utf-8").replace("рут: PM-01", "рут: PM-09"), encoding="utf-8")
+    rc, out = kb("check")
+    assert rc == 1 and "рут PM-09 не найден" in out

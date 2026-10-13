@@ -314,6 +314,17 @@ def build(root: Path, kb, since: str | None, until: str | None, who: str | None)
         if r["status"] in ("Разбор", "Сверка с бизнесом", "Нарезка") and r["idle"] is not None and r["idle"] >= 3:
             signals.append(f"{r['id']} в «{r['status']}», без правок {r['idle']} дн. Смотреть: человек ждёт бизнес, "
                            "занят другим или застрял в разборе?")
+    # карточки: висят «В работе» или «На приёмке» больше 2 рабочих дней с последней правки
+    for c in kb.load("card"):
+        st = c["fm"].get("статус")
+        if st not in ("В работе", "На приёмке"):
+            continue
+        path = kb.rel(c["path"]).split("/", 1)[1]
+        touch = max((x["when"] for x in commits if not x["merge"] and path in x["files"]), default=None)
+        if touch and _workdays(touch, dt.datetime.combine(today, dt.time())) > 2:
+            who = "владелец рута не принимает" if st == "На приёмке" else f"{kb.tool('kb_cards').taker(c['fm'])} не продвигается"
+            signals.append(f"Карточка {c['fm'].get('id')} в «{st}» больше 2 рабочих дней: {who}. "
+                           "Смотреть: застрял в разборе, ждёт бизнес, приёмка не успевает?")
     stale_q = [q for q in open_q if q[2] >= 2]
     if stale_q:
         signals.append(f"Вопросов без ответа 2+ рабочих дня: {len(stale_q)} (старший — {stale_q[0][0]}, {stale_q[0][2]} дн.). "
