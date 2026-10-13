@@ -863,3 +863,9 @@ def test_upgrade_updates_tool_not_knowledge(repo, kb, tmp_path):
     assert "~ .claude/skills/kb-next/SKILL.md" in out and "новое поле" in out
     rc, out = kb("upgrade", "--from", str(tpl))
     assert "Обновлено файлов: 0, новых: 0" in out
+
+
+def test_exact_name_beats_email_for_role_switch(repo, kb):
+    rc, out = kb("team", "set", "Мадина", "git=m@x", user="Гульнара")
+    rc, out = kb("whoami", user="Тимур")     # почта m@x у Мадины, но имя переключено на Тимура
+    assert "Имя: Тимур" in out

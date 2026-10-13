@@ -693,7 +693,7 @@ def cmd_index() -> int:
 def first_heading(text: str) -> str:
     for line in body_of(text).splitlines():
         if line.startswith("# "):
-            return re.sub(r"^#\s+[QADRPMSY0-9-]+(new-\S+)?\s*", "", line).strip()
+            return re.sub(r"^#\s+[QADRPMSYK0-9-]+(new-\S+)?\s*", "", line).strip()
     return ""
 
 
@@ -730,10 +730,13 @@ def team_people() -> list[dict]:
 
 
 def resolve_person(name: str, email: str = "") -> str:
-    """Имя из team.md по git-имени и почте. Сначала почта или git-имя в колонке «git», потом совпадение имени
-    без учёта регистра. Не нашли — исходное git-имя."""
+    """Имя из team.md по git-имени и почте. Порядок: git-имя точно как «Имя»; почта или git-имя в колонке «git»;
+    имя без учёта регистра. Не нашли — исходное git-имя."""
     name, email = (name or "").strip(), (email or "").strip().lower()
     people = team_people()
+    for r in people:   # точное имя из team.md — главнее почты: так в соло переключают роль (git config user.name)
+        if name and r["Имя"] == name:
+            return r["Имя"]
     for r in people:
         keys = [k.strip().lower() for k in re.split(r"[,;]", r.get("git", "")) if k.strip()]
         if (email and email in keys) or (name and name.lower() in keys):
