@@ -651,3 +651,23 @@ def test_meeting_without_summary_warns_and_needs_date(repo, kb):
     src.write_text("Спикер 1: текст\n", encoding="utf-8")
     rc, out = kb("new", "meeting", "x", "из=kb/inbox/bez-daty.md", "с кем=юрист", "тема=т")
     assert rc == 2 and "дата=ГГГГ-ММ-ДД" in out
+
+
+# ---------- режим персональных данных ----------
+def test_pd_mode_contour_allows_raw_materials_but_not_steps(repo, kb):
+    mat = repo / "kb" / "materials" / "files"
+    mat.mkdir(parents=True, exist_ok=True)
+    (mat / "reestr.csv").write_text("ФИО;ИИН\nКлиент;890101300123\n", encoding="utf-8")
+    rc, out = kb("check")
+    assert rc == 1 and "персональные данные" in out          # по умолчанию — запрещены
+    team = repo / "kb" / "team.md"
+    t = team.read_text(encoding="utf-8")
+    team.write_text(t.replace("лимит рутов на человека:", "персональные данные: в контуре\nлимит рутов на человека:", 1),
+                    encoding="utf-8")
+    rc, out = kb("check")
+    assert rc == 0, out
+    path = mk_step(repo, "PM-01", "reg")
+    path.write_text(path.read_text(encoding="utf-8").replace("## Правила\n", "## Правила\n- ИИН 890101300123 (x, подтверждено)\n", 1),
+                    encoding="utf-8")
+    rc, out = kb("check")
+    assert rc == 1 and "PM-01" in out and "персональные данные" in out

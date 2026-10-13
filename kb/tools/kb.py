@@ -385,9 +385,13 @@ def cmd_check() -> int:
                     else:
                         errors.append(f"{rel(p)}:{n}: ссылка на {ref}, а такого объекта нет")
 
-    # похоже на персональные данные — предупреждение
+    # персональные данные: где ошибка, где предупреждение — по полю «персональные данные» в team.md
+    contour = pd_mode() == "в контуре"
+    strict = PD_STRICT_CONTOUR if contour else PD_STRICT_DIRS
     for p, txt in text_files():
         parts = kparts(p)
+        if contour and parts[0] in ("materials", "inbox"):
+            continue
         if parts[0] in DOC_DIRS or p.name.startswith("_template") or p.name in ("README.md", "AGENTS.md", "CLAUDE.md") \
                 or p.suffix.lower() not in (".md", ".csv", ".tsv", ".txt", ".json", ".py", ".sql", ".xml", ".yaml", ".yml", ".log"):
             continue
@@ -396,7 +400,7 @@ def cmd_check() -> int:
             if m:
                 line = txt.count("\n", 0, m.start()) + 1
                 msg = f"{rel(p)}:{line}: похоже на персональные данные ({kind_pd}) — {PD_MASK_HINT}"
-                (errors if parts[0] in PD_STRICT_DIRS else warnings).append(msg)
+                (errors if parts[0] in strict else warnings).append(msg)
                 break
 
     # формат фактов в шагах: «текст (источник, статус)»
@@ -531,6 +535,14 @@ PD_PATTERNS = [
 ]
 PD_MASK_HINT = "замените на маску: оставьте первые 3–4 знака, остальное — звёздочки, например +7 701 ***-**-** или 3140590*******"
 PD_STRICT_DIRS = ("materials", "datasets", "inbox")   # здесь персональные данные — ошибка, не предупреждение
+# «персональные данные: в контуре»: сырые материалы можно хранить, а в знаниях пула — только роли и маски
+PD_STRICT_CONTOUR = ("datasets", "context", "journal", "core", "specs", "product.md")
+
+
+def pd_mode() -> str:
+    fm, _ = team_info()
+    v = str(fm.get("персональные данные", "") or "").split("#")[0].strip().lower()
+    return "в контуре" if v == "в контуре" else "запрещены"
 STE_MAX_WORDS = 25
 STE_BAD_RE = re.compile(r"(?i)(?<![\wА-Яа-яЁё])(осуществля\w*|производит(?:ся|ь)\w*|явля(?:ется|ются)|данн(?:ый|ого|ому|ая|ую|ое|ой)|в рамках|соответствующ\w*)(?![\wА-Яа-яЁё])")
 FACT_SECTIONS = ["Как сейчас", "Объём и время", "Правила", "Исключения", "Боль"]
