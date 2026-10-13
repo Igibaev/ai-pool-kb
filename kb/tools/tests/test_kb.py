@@ -842,3 +842,24 @@ def test_card_limit_and_broken_card(repo, kb):
     c3.write_text(c3.read_text(encoding="utf-8").replace("рут: PM-01", "рут: PM-09"), encoding="utf-8")
     rc, out = kb("check")
     assert rc == 1 and "рут PM-09 не найден" in out
+
+
+# ---------- upgrade из шаблона ----------
+def test_upgrade_updates_tool_not_knowledge(repo, kb, tmp_path):
+    import shutil as _sh
+    tpl = tmp_path / "tpl"
+    _sh.copytree(repo, tpl, ignore=_sh.ignore_patterns(".git", "__pycache__"))
+    skill = tpl / ".claude" / "skills" / "kb-next" / "SKILL.md"
+    skill.write_text(skill.read_text(encoding="utf-8") + "\nНОВОЕ ПРАВИЛО ИЗ ШАБЛОНА\n", encoding="utf-8")
+    (tpl / "kb" / "product.md").write_text("ЧУЖОЙ ПРОДУКТ\n", encoding="utf-8")
+    t = (tpl / "kb" / "team.md").read_text(encoding="utf-8")
+    (tpl / "kb" / "team.md").write_text(t.replace("лимит рутов на человека:", "новое поле: да\nлимит рутов на человека:", 1),
+                                        encoding="utf-8")
+    product_before = (repo / "kb" / "product.md").read_text(encoding="utf-8")
+    rc, out = kb("upgrade", "--from", str(tpl))
+    assert rc == 0, out
+    assert "НОВОЕ ПРАВИЛО ИЗ ШАБЛОНА" in (repo / ".claude" / "skills" / "kb-next" / "SKILL.md").read_text(encoding="utf-8")
+    assert (repo / "kb" / "product.md").read_text(encoding="utf-8") == product_before
+    assert "~ .claude/skills/kb-next/SKILL.md" in out and "новое поле" in out
+    rc, out = kb("upgrade", "--from", str(tpl))
+    assert "Обновлено файлов: 0, новых: 0" in out

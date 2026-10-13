@@ -67,6 +67,9 @@
     python3 kb/tools/kb.py after-merge           assign-ids + index: то, что делает CI после слияния (для соло-режима без CI)
     python3 kb/tools/kb.py activity [--since <дата|хеш|7д>] [--until <дата>] [--who <имя>] [--html <файл>]
                                               кто что делал за период и сигналы процесса — для руководителя (по истории git)
+    python3 kb/tools/kb.py upgrade --from <git-адрес или путь к шаблону> [--ref main]
+                                              обновить инструмент из шаблона: правила, скиллы, kb/tools, kb/docs, шаблоны;
+                                              знания продукта не трогает, не коммитит
     python3 kb/tools/kb.py report [--with-materials]
                                               архив kb-report-<дата>.zip: база знаний, FEEDBACK.md и история git — чтобы отдать на разбор
 
@@ -2323,6 +2326,8 @@ def main(argv: list[str]) -> int:
         return cmd_map()
     if cmd == "after-merge":
         return cmd_after_merge()
+    if cmd == "upgrade":
+        return tool("kb_upgrade").run(args, sys.modules[__name__])
     if cmd == "convert":
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import kb_convert
