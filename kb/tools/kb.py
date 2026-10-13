@@ -9,6 +9,8 @@
     python3 kb/tools/kb.py new assumption <slug> создать допущение A-new-<slug>
     python3 kb/tools/kb.py new decision <slug>   создать решение D-new-<slug>
     python3 kb/tools/kb.py new risk <slug>       создать риск R-new-<slug>
+    python3 kb/tools/kb.py new meeting <с-кем> из=<kb/inbox/_md/файл.md> [дата=ГГГГ-ММ-ДД] "с кем=…" тема="…" [шаги=[PM-04]]
+                                              расшифровка встречи → kb/materials/meetings/<дата>-<с-кем>.md + заготовка саммари
     python3 kb/tools/kb.py new step <slug> шаг="…" [порядок=… "главный объект=…" системы=[…] "Зачем этот шаг бизнесу=…"]
                                               создать файл шага PM-XX (аналитик, kb-map); номер — следующий свободный
     python3 kb/tools/kb.py new system <slug> система="…" ["Роль в процессе=…"]
@@ -82,6 +84,15 @@ def write(path: Path, text: str) -> None:
 
 KB = Path(__file__).resolve().parent.parent   # папка базы знаний (kb/)
 ROOT = KB.parent                               # корень репозитория: git, код, AGENTS.md
+
+
+def tool(name: str):
+    """Модуль из kb/tools: kb_meetings, kb_convert, kb_map…"""
+    import importlib
+    here = str(Path(__file__).resolve().parent)
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    return importlib.import_module(name)
 
 
 def kb_rel(p: str) -> str:
@@ -184,7 +195,8 @@ TEMPLATES = {
 }
 
 OPEN_Q = {"открыт", "ждёт бизнес", "возможно отвечен"}
-GENERATED = {"context/process/_index.md", "journal/_index.md", "context/process/_map.svg", "context/process/_map.html"}   # от kb/
+GENERATED = {"context/process/_index.md", "journal/_index.md", "context/process/_map.svg", "context/process/_map.html",
+             "materials/meetings/_index.md"}   # от kb/
 SKIP_DIRS = {".git", "node_modules", "target", "build", "dist", ".venv", "venv", "__pycache__"}
 # Документация и инструкции содержат примеры ID — их нумерация не трогает.
 DOC_DIRS = {".claude", ".agents", ".opencode", ".gitlab", "tools", "docs", "game"}
@@ -480,6 +492,7 @@ def cmd_check() -> int:
             if mate == fm.get("владелец рута"):
                 errors.append(f"{rel(it['path'])}: напарник совпадает с владельцем")
 
+    tool("kb_meetings").check(sys.modules[__name__], errors, warnings)
     for w in warnings:
         print(f"ПРЕДУПРЕЖДЕНИЕ  {w}")
     for e in errors:
@@ -619,6 +632,9 @@ def cmd_index() -> int:
                    f"| {fm.get('тип', '')} | {fm.get('статус', '')} | {fm.get('дата', '')} |")
     write(KB / "journal/_index.md", "\n".join(out) + "\n")
     print("Обновлено: kb/context/process/_index.md, kb/journal/_index.md")
+    mi = tool("kb_meetings").index(sys.modules[__name__])
+    if mi:
+        print(f"Обновлено: {rel(mi)}")
     if list((KB / "context/process").glob("**/_map.md")):
         cmd_map(quiet=True)
         print("Обновлено: карта процессов _map.svg, _map.html")
@@ -1373,6 +1389,8 @@ def cmd_new_filled(kind: str, slug: str, extra: list[str]) -> int:
     slug = slugify(slug)
     if kind in ("step", "system"):
         return cmd_new_step_or_system(kind, slug, extra)
+    if kind == "meeting":
+        return tool("kb_meetings").cmd_new_meeting(sys.modules[__name__], slug, extra)
     if not extra:
         return cmd_new(kind, slug)
     import contextlib, io
@@ -1599,6 +1617,9 @@ def cmd_whoami() -> int:
         if AWAIT_OWNER in ans or fresh:
             where = "ещё не перенесён в шаг" if AWAIT_OWNER in ans else "перенесён"
             news.append(f"{fm.get('id')} [{fm.get('раздел')}] {first_heading(q['text'])} — {where}")
+    for line in tool("kb_meetings").recent_for(sys.modules[__name__], my_roots | {it["fm"].get("id") for it in load("system")
+                                                                              if it["fm"].get("владелец раздела в пуле") == user}):
+        print("НОВОЕ: " + line)
     if news:
         print("НОВОЕ: пришли ответы на ваши вопросы (текст ответа: python3 kb/tools/kb.py show Q-…):\n  " + "\n  ".join(news))
     my_sys = {it["fm"].get("id") for it in load("system") if it["fm"].get("владелец раздела в пуле") == user}

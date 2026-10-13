@@ -614,3 +614,40 @@ def test_convert_pdf_text_and_scan(repo, kb):
     assert "## стр. 1" in t and "delo 123" in t and "Страниц: 2" in t
     s = (inbox / "_md" / "scan.pdf.md").read_text(encoding="utf-8")
     assert "СКАН: текста нет" in s and "НЕ ПРОЧИТАНО: 1" in out
+
+
+# ---------- встречи ----------
+def test_meeting_from_convert_summary_index_whoami(repo, kb):
+    inbox = repo / "kb" / "inbox"
+    (inbox / "zapis-vstrechi.txt").write_text(
+        "Встреча 2026-10-14\n" + "\n".join(f"[00:0{i}:00] Спикер {i % 2 + 1}: про выгрузку {i}" for i in range(8)),
+        encoding="utf-8")
+    rc, out = kb("convert")
+    assert "ПОХОЖЕ НА РАСШИФРОВКУ ВСТРЕЧИ" in out, out
+    mk_step(repo, "PM-01", "reg")
+    rc, out = kb("set", "PM-01", "владелец рута=Тимур", user="Гульнара")
+    rc, out = kb("new", "meeting", "smezhniki-bki", "из=kb/inbox/_md/zapis-vstrechi.txt.md",
+                 "с кем=смежники, команда БКИ", "тема=Обмен реестрами", "шаги=[PM-01]")
+    assert rc == 0, out
+    m = repo / "kb" / "materials" / "meetings"
+    assert (m / "2026-10-14-smezhniki-bki.md").exists()
+    sm = (m / "2026-10-14-smezhniki-bki.summary.md").read_text(encoding="utf-8")
+    assert "встреча: 2026-10-14" in sm and "шаги: [PM-01]" in sm
+    assert "2026-10-14-smezhniki-bki.md" in (inbox / "_razobrano.md").read_text(encoding="utf-8")
+    rc, out = kb("check")
+    assert "саммари не заполнено" in out
+    rc, out = kb("index")
+    assert "| 2026-10-14 | смежники, команда БКИ | Обмен реестрами | PM-01 |" in (m / "_index.md").read_text(encoding="utf-8")
+    rc, out = kb("whoami", user="Тимур")
+    assert "НОВОЕ: встреча 2026-10-14" in out and "PM-01" in out
+
+
+def test_meeting_without_summary_warns_and_needs_date(repo, kb):
+    m = repo / "kb" / "materials" / "meetings"
+    (m / "2026-10-01-yurist.md").write_text("Спикер 1: привет\n", encoding="utf-8")
+    rc, out = kb("check")
+    assert "встреча без саммари" in out
+    src = repo / "kb" / "inbox" / "bez-daty.md"
+    src.write_text("Спикер 1: текст\n", encoding="utf-8")
+    rc, out = kb("new", "meeting", "x", "из=kb/inbox/bez-daty.md", "с кем=юрист", "тема=т")
+    assert rc == 2 and "дата=ГГГГ-ММ-ДД" in out
