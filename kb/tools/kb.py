@@ -996,7 +996,7 @@ def cmd_context(ident: str) -> int:
     if kind == "step" and user != owner and user in pair_of(it["fm"]):
         verdict = "вы напарник: пишете в файл сами, в своих разделах; статус и нарезку ведёт владелец"
     else:
-        verdict = "вы владелец, пишете в файл сами" if owner == user else "вы НЕ владелец: правки через MR владельцу или вопрос"
+        verdict = "вы владелец, пишете в файл сами" if owner == user else "вы НЕ владелец: не правите, а вопрос"
     out.append(f"== {owner_field}: {owner}" + (f", напарник: {it['fm'].get('напарник')}" if kind == "step" and len(pair_of(it["fm"])) > 1 else "") + f" → {verdict}")
     if kind == "step":
         n, why = size_hint(it)
@@ -1577,7 +1577,7 @@ def owner_note(path: Path) -> str:
     fm = parse_frontmatter(path.read_text(encoding="utf-8"))
     owner = fm.get("владелец рута") or fm.get("владелец раздела в пуле")
     if owner and owner != git_user() and git_user() not in pair_of(fm):
-        return f" ВНИМАНИЕ: владелец — {owner}, не вы. Такая правка — только в ветке для MR владельцу."
+        return f" ВНИМАНИЕ: владелец — {owner}, не вы. Чужой файл не правят: вопрос владельцу (kb-ask)."
     return ""
 
 
@@ -2020,7 +2020,7 @@ def cmd_take(ident: str, force: bool) -> int:
             return 0
         if people_on(fm) == 2 and len(pair) == 2 and fm.get("статус") in WIP_STATUSES:
             print(f"ОШИБКА  {ident} уже ведут двое: {' и '.join(pair)}. Больше двух на рут не берут — "
-                  "третий начинает делать за других. Возьмите другой рут или помогите вопросами и MR.")
+                  "третий начинает делать за других. Возьмите другой рут или карточку этого рута, помогите вопросами.")
         elif people_on(fm) == 2:
             print(f"ОШИБКА  {ident} у {owner}, статус «{fm.get('статус')}» — в пару входят только в статусах "
                   f"{', '.join(WIP_STATUSES)}.")

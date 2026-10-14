@@ -261,7 +261,7 @@ def apply(kb, args: list[str]) -> int:
             targets = ", ".join(new_ids.get(x.strip(), x.strip()) for x in b.split(","))
             q = _question(kb, f"perenos-{a.lower()}", a, f"Перенести факты из {a} в {targets} после разделения шага",
                           f"Аналитик разделил {a}: новая часть — {targets}. Основание: {o['why'] or base}. "
-                          f"Владелец переносит свои факты MR-ом и отвечает здесь.")
+                          f"Владелец переносит свои факты сам и отвечает здесь.")
             questions.append(q)
             log_rows.append(f"| {today} | {a} разделён: новая часть {targets} | {o['why'] or base} | {q} |")
     # объединения и удаления
