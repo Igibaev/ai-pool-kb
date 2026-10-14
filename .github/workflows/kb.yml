@@ -1,0 +1,55 @@
+# База знаний на GitHub: то же, что .gitlab-ci.yml.
+# Все работают в develop и отправляют через агента: python3 kb/tools/kb.py push.
+# На каждый push в develop: проверка (kb.py check) и номера + сводки (kb.py after-merge) отдельным коммитом.
+# Задачи after-merge идут строго по одной (concurrency). Коммит CI с [skip ci] новых запусков не вызывает.
+# Настройка: Settings → Actions → General → Workflow permissions → «Read and write permissions».
+# Если develop защищена правилом — разрешите push для команды и для GitHub Actions.
+# Другое имя ветки — замените develop ниже и поле «основная ветка» в kb/team.md.
+
+name: kb
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python3 kb/tools/kb.py check
+
+  after-merge:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: kb-after-merge
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Номера и сводки
+        run: |
+          git config user.name "CI"
+          git config user.email "ci@local"
+          git pull --rebase origin develop
+          python3 kb/tools/kb.py after-merge
+          python3 kb/tools/kb.py check || echo "kb-check после after-merge: есть ошибки, смотрите вывод выше"
+          if [ -n "$(git status --porcelain)" ]; then
+            git add -A
+            git commit -m "kb: номера и сводки [skip ci]"
+            git push origin HEAD:develop || (git pull --rebase origin develop && git push origin HEAD:develop)
+          fi

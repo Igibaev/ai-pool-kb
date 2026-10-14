@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 
 TOOL_FILES = ["AGENTS.md", "CLAUDE.md", "opencode.json", ".gitlab-ci.yml"]
-TOOL_DIRS = [".claude", ".opencode", "kb/tools", "kb/docs"]
+TOOL_DIRS = [".claude", ".opencode", ".github", "kb/tools", "kb/docs"]
 SKIP = {"__pycache__", ".pytest_cache"}
 
 

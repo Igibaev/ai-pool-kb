@@ -114,14 +114,16 @@ def take(kb, ident: str) -> int:
     if len(mine(kb, user)) >= limit(kb):
         print(f"ОШИБКА  у вас уже {len(mine(kb, user))} карточки в работе — лимит {limit(kb)}. Сдайте или верните одну")
         return 1
+    if not kb._take_guard(ident, kb.rel(c["path"]), user, ("взял",), False):
+        return 1
     text, errs = kb.set_fields(c["text"], "card", {"взял": user, "статус": "В работе"})
     if errs:
         print("ОШИБКА  " + "; ".join(errs))
         return 1
     kb.write(c["path"], text)
     f = kb.rel(c["path"])
-    print(f"{ident}: ваша, «В работе». Разбор: /kb-explore {ident}. Коммит сразу в основную ветку: "
-          f"git commit -m \"{ident}: взял(а) карточку\" -m \"Скилл: kb-take\" -- {f} && git push")
+    print(f"{ident}: ваша, «В работе». Разбор: /kb-explore {ident}.")
+    print(kb._take_push_msg(ident, "взял(а) карточку", f))
     return 0
 
 

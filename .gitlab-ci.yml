@@ -1,8 +1,11 @@
-# База знаний: проверка на каждом MR и на каждом коммите в основную ветку; номера и сводки после слияния.
-# Задача kb-after-merge выполняется строго по одной (resource_group).
-# Нужен токен с правом push в основную ветку: переменная KB_PUSH_TOKEN (Settings → CI/CD → Variables).
-# Основная ветка: разрешите push для Developers (Settings → Repository → Protected branches → Allowed to push),
-# иначе взятие рутов и объекты журнала, которые идут прямым коммитом, будут отклонены.
+# База знаний: все работают в одной ветке (develop) и отправляют через агента: python3 kb/tools/kb.py push.
+# CI на каждом push в develop: проверка и номера + сводки. Задача kb-after-merge идёт строго по одной (resource_group).
+# Нужен токен с правом push в develop: переменная KB_PUSH_TOKEN (Settings → CI/CD → Variables).
+# develop: разрешите push для Developers (Settings → Repository → Protected branches → Allowed to push),
+# иначе kb.py push будет отклонён. Другое имя ветки — KB_BRANCH ниже и поле «основная ветка» в kb/team.md.
+
+variables:
+  KB_BRANCH: develop
 
 stages: [check, after-merge]
 
@@ -13,12 +16,12 @@ kb-check:
     - python3 kb/tools/kb.py check
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
+    - if: $CI_COMMIT_BRANCH == $KB_BRANCH && $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
 
 kb-after-merge:
   stage: after-merge
   image: python:3.12-slim
-  resource_group: kb-main
+  resource_group: kb-develop
   before_script:
     - apt-get update -qq && apt-get install -y -qq git > /dev/null
     - git config user.name "CI"
@@ -36,4 +39,4 @@ kb-after-merge:
         git push "https://oauth2:${KB_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "HEAD:$CI_COMMIT_BRANCH"
       fi
   rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
+    - if: $CI_COMMIT_BRANCH == $KB_BRANCH && $CI_COMMIT_MESSAGE !~ /\[skip ci\]/
