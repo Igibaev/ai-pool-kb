@@ -1954,7 +1954,8 @@ def _take_push_msg(ident: str, what: str, files: str) -> str:
     commit = f"git commit -m \"{ident}: {what}\" -m \"Скилл: kb-take\" -- {files}"
     if not kg.has_remote(me):
         return f"Коммит: {commit}"
-    return (f"Сразу коммит и отправка, чтобы другие увидели, что занято: {commit} && python3 kb/tools/kb.py push. "
+    return (f"Сразу коммит: {commit}. Затем спросите человека «Отправить взятие в develop сейчас? Пока не отправлено, "
+            "рут для других свободен». Только после «да» — python3 kb/tools/kb.py push. "
             "push скажет «ВЗЯТО ДРУГИМ», если кто-то успел раньше, — тогда взять следующий.")
 
 
@@ -2059,7 +2060,7 @@ def cmd_release(ident: str, reason: str) -> int:
             return 1
         text, errs = set_fields(text, "system", {"владелец раздела в пуле": "не назначен"})
         write(path, text)
-        print(f"{ident}: владелец раздела не назначен. Коммит: «{ident}: отпустил(а) систему — {reason}», затем python3 kb/tools/kb.py push")
+        print(f"{ident}: владелец раздела не назначен. Коммит: «{ident}: отпустил(а) систему — {reason}», затем, после «да» человека, python3 kb/tools/kb.py push")
         return 0
     it = step_by_id(ident)
     if not it:
@@ -2075,7 +2076,7 @@ def cmd_release(ident: str, reason: str) -> int:
         text, _ = set_fields(it["text"], "step", {"напарник": "—"})
         write(it["path"], text)
         print(f"{ident}: вы больше не напарник, рут остаётся у {fm.get('владелец рута')}. "
-              f"Коммит: «{ident}: вышел(ла) из пары — {reason}», затем python3 kb/tools/kb.py push")
+              f"Коммит: «{ident}: вышел(ла) из пары — {reason}», затем, после «да» человека, python3 kb/tools/kb.py push")
         return 0
     if fm.get("владелец рута") != user:
         print(f"ОШИБКА  вернуть может только владелец или напарник: {' и '.join(pair_of(fm)) or 'не назначен'}")
@@ -2084,12 +2085,12 @@ def cmd_release(ident: str, reason: str) -> int:
         text, _ = set_fields(it["text"], "step", {"владелец рута": mate, "напарник": "—"})
         write(it["path"], text)
         print(f"{ident}: владелец теперь {mate}, место напарника свободно — предупредите {mate}. "
-              f"Коммит: «{ident}: передал(а) рут {mate} — {reason}», затем python3 kb/tools/kb.py push")
+              f"Коммит: «{ident}: передал(а) рут {mate} — {reason}», затем, после «да» человека, python3 kb/tools/kb.py push")
         return 0
     text, _ = set_fields(it["text"], "step", {"владелец рута": "не назначен", "статус": "Готов к взятию"})
     write(it["path"], text)
     print(f"{ident} снова «Готов к взятию». Факты остаются. Коммит: «{ident}: вернул(а) рут — {reason}», "
-          "затем python3 kb/tools/kb.py push")
+          "затем, после «да» человека, python3 kb/tools/kb.py push")
     return 0
 
 
@@ -2185,7 +2186,7 @@ def cmd_resume() -> int:
     kg = tool("kb_git")
     if kg._rebasing(sys.modules[__name__]):
         print("ОТПРАВКА НЕ ЗАКОНЧЕНА: идёт обновление с конфликтом. Покажи человеку файлы с отметками <<<<<<< "
-              "и спроси, что оставить; затем python3 kb/tools/kb.py push --continue. Отменить — push --abort")
+              "и спроси, что оставить; затем, после «да» человека, python3 kb/tools/kb.py push --continue. Отменить — push --abort")
     print("Не закоммичено: " + ("\n  " + "\n  ".join(u["status"]) if u["status"] else "—"))
     print("Закоммичено, но не отправлено (git push): " + ("\n  " + "\n  ".join(u["unpushed"]) if u["unpushed"] else "—"))
     print("Ветки с работой, которой нет в основной: " + ("\n  " + "\n  ".join(u["branches"]) if u["branches"] else "—"))

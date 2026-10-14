@@ -46,7 +46,7 @@ description: "Оформить решение пула: варианты из ф
 
 ## 6. Проверка и отправка
 
-Отправка — `python3 kb/tools/kb.py push`, раздел «Git» в `AGENTS.md`. «Текст для группы» из его вывода покажи человеку и попроси переслать в чат команды.
+Отправка — спроси человека «Отправить в develop?» и только после «да» — `python3 kb/tools/kb.py push`, раздел «Git» в `AGENTS.md`. «Текст для группы» из его вывода покажи человеку и попроси переслать в чат команды.
 
 1. `python3 kb/tools/kb.py check`.
 2. `git commit -m "D-new-master-id: свой мастер-ID надписи (Q-006)" -m "Скилл: kb-decide" -- kb/journal/decisions/D-new-master-id.md`.

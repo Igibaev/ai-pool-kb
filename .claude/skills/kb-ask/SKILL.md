@@ -44,7 +44,7 @@ description: "Задать вопрос без дублей: найти отве
 
 ## 5. Проверка и отправка
 
-Отправка — `python3 kb/tools/kb.py push`, раздел «Git» в `AGENTS.md`. «Текст для группы» из его вывода покажи человеку и попроси переслать в чат команды.
+Отправка — спроси человека «Отправить в develop?» и только после «да» — `python3 kb/tools/kb.py push`, раздел «Git» в `AGENTS.md`. «Текст для группы» из его вывода покажи человеку и попроси переслать в чат команды.
 
 1. `python3 kb/tools/kb.py check`.
 2. Коммит: `git commit -m "Q-new-istochnik-dolga: кто источник правды по сумме долга" -m "Скилл: kb-ask" -- kb/journal/questions/Q-new-istochnik-dolga.md`.

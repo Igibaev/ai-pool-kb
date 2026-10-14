@@ -19,6 +19,14 @@
       "Bash(git mv:*)",
       "Bash(grep:*)",
       "Bash(ls:*)"
+    ],
+    "ask": [
+      "Bash(python3 kb/tools/kb.py push *)",
+      "Bash(python kb/tools/kb.py push *)",
+      "Bash(py -3 kb/tools/kb.py push *)"
+    ],
+    "deny": [
+      "Bash(git push *)"
     ]
   }
 }

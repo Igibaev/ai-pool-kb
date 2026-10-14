@@ -357,7 +357,7 @@ def _drive_rebase(k) -> int:
             print("\nНУЖЕН ЧЕЛОВЕК  агент не выбирает сам между двумя версиями одной строки.\n"
                   "Покажи человеку «было / в develop / у вас» по каждому месту выше и спроси, что оставить: "
                   "версию develop, свою, обе или новую формулировку. Исправь файл — убери отметки "
-                  "<<<<<<< ||||||| ======= >>>>>>> — затем: python3 kb/tools/kb.py push --continue. "
+                  "<<<<<<< ||||||| ======= >>>>>>> — покажи человеку итог и спроси «Отправить?»; после «да»: python3 kb/tools/kb.py push --continue. "
                   "Передумали — push --abort.\nФайлы: " + ", ".join(need))
             return 4
         r = _git(k, "rebase", "--continue")
@@ -493,7 +493,7 @@ def cmd_push(k, args: list[str]) -> int:
                   "одну и ту же строку, изменённую по-разному, покажет вам.")
         else:
             print("Конфликтов нет: git сольёт правки сам.")
-        print("\nПОКАЖИ ЧЕЛОВЕКУ эти правки коллег и спроси, отправлять ли. Да — python3 kb/tools/kb.py push --yes")
+        print("\nПОКАЖИ ЧЕЛОВЕКУ эти правки коллег и спроси, отправлять ли. Только после его «да» — python3 kb/tools/kb.py push --yes")
         return 3
     others = [c for c in commits if not c.split("\t")[-1].startswith(CI_SUBJECT)]
     if commits:

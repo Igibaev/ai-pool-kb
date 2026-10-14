@@ -1,7 +1,10 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "default_agent": "kb",
-  "compaction": { "auto": true, "prune": true },
+  "compaction": {
+    "auto": true,
+    "prune": true
+  },
   "permission": {
     "edit": "allow",
     "bash": {
@@ -24,9 +27,12 @@
       "git pull*": "allow",
       "ls*": "allow",
       "grep *": "allow",
-      "git push*": "ask",
       "git reset*": "ask",
-      "rm *": "ask"
+      "rm *": "ask",
+      "python3 kb/tools/kb.py push*": "ask",
+      "python kb/tools/kb.py push*": "ask",
+      "py -3 kb/tools/kb.py push*": "ask",
+      "git push*": "deny"
     }
   }
 }
