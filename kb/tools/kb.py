@@ -47,7 +47,7 @@
                                               дописать строку в раздел (Подписчики, Уточнения, История, Ответ, разделы шага)
     python3 kb/tools/kb.py fact <PM-XX|SYS-XX> "<Раздел>" "<текст>" "<источник>" <статус>
                                               дописать факт в правильном формате: «текст (источник, статус)»
-    python3 kb/tools/kb.py assign-ids            присвоить номера временным ID (только в основной ветке, в CI)
+    python3 kb/tools/kb.py assign-ids            присвоить номера временным ID (только в основной ветке — develop, в CI)
     python3 kb/tools/kb.py refs <ID>             найти все места, где упоминается ID
     python3 kb/tools/kb.py context <PM-XX|SYS-XX> всё нужное для работы с шагом одной выжимкой: кто работает, место на карте,
                                               файл шага, открытые вопросы, допущения, риски, решения, глоссарий, нарезка других рутов
@@ -64,6 +64,12 @@
     python3 kb/tools/kb.py map sync           после ручной правки таблицы «Шаги»: создать недостающие шаги, обновить порядок
     python3 kb/tools/kb.py map                   нарисовать карту процессов: _map.svg (картинка) и _map.html (интерактивная схема)
                                               со статусами, владельцами, вопросами и декомпозитами каждого шага
+    python3 kb/tools/kb.py branch <ID|тема> [слово]
+                                              своя ветка <логин>/<ID>-<слово> от свежей основной ветки (develop)
+    python3 kb/tools/kb.py mr                    перед MR и слиянием: отставание от develop, check, чужие ветки
+                                              с теми же файлами, push, заголовок и описание MR
+    python3 kb/tools/kb.py announce [--since <хеш>]
+                                              текст для группы: что вы влили в базу знаний
     python3 kb/tools/kb.py after-merge           assign-ids + index: то, что делает CI после слияния (для соло-режима без CI)
     python3 kb/tools/kb.py activity [--since <дата|хеш|7д>] [--until <дата>] [--who <имя>] [--html <файл>]
                                               кто что делал за период и сигналы процесса — для руководителя (по истории git)
@@ -1678,6 +1684,13 @@ def cmd_whoami() -> int:
     print(f"Режим: {fm_team.get('режим', '?')}; архитектор недели: {fm_team.get('архитектор недели', '?')}; "
           f"рабочие часы: {fm_team.get('рабочие часы', '?')}")
     u = unfinished(user)
+    kg = tool("kb_git")
+    if kg.team_mode(sys.modules[__name__]) == "команда":
+        base = kg.base_branch(sys.modules[__name__])
+        if u["branch"] == base:
+            print(f"Ветка: {base} — общая. Перед правками своя ветка: python3 kb/tools/kb.py branch <ID> [слово]")
+        elif u["branch"]:
+            print(f"Ветка: {u['branch']} → MR в {base}. Готово — python3 kb/tools/kb.py mr")
     if u["status"] or u["unpushed"]:
         print(f"НЕЗАВЕРШЁННОЕ: не закоммичено файлов — {len(u['status'])}, не отправлено коммитов — {len(u['unpushed'])}"
               + (f"; последняя заметка: {u['notes'][-1][2:]}" if u["notes"] else "")
@@ -1926,6 +1939,31 @@ def cmd_ready() -> int:
     return 0
 
 
+def _take_guard(ident: str, relpath: str, user: str, fields: tuple[str, ...], force: bool) -> bool:
+    """Команда: брать только из своей ветки и только если рут не взят в чужой невлитой ветке."""
+    kg = tool("kb_git")
+    me = sys.modules[__name__]
+    if kg.on_base_in_team(me):
+        print(f"ОШИБКА  вы в {kg.base_branch(me)}. Сначала своя ветка: python3 kb/tools/kb.py branch {ident}, "
+              f"затем take {ident} снова")
+        return False
+    hits = kg.taken_elsewhere(me, relpath, user, fields)
+    if hits and not force:
+        print(f"ОШИБКА  {ident} уже взяли, но MR ещё не влит: {'; '.join(hits)}. Возьмите другой "
+              "или спросите этого человека. Уверены, что ветка брошена, — take с --force и напишите в группу")
+        return False
+    return True
+
+
+def _take_push_msg(ident: str, what: str, files: str) -> str:
+    kg = tool("kb_git")
+    me = sys.modules[__name__]
+    if kg.team_mode(me) == "соло" or not kg.has_remote(me):
+        return f"Коммит: git commit -m \"{ident}: {what}\" -m \"Скилл: kb-take\" -- {files}"
+    return ("Коммит в вашу ветку и сразу push — так другие увидят, что рут занят: "
+            + kg.commit_hint(me, f"{ident}: {what}", files))
+
+
 def cmd_take(ident: str, force: bool) -> int:
     ident = ident.strip().upper()
     user = git_user()
@@ -1942,6 +1980,8 @@ def cmd_take(ident: str, force: bool) -> int:
         owner = parse_frontmatter(text).get("владелец раздела в пуле", "")
         if owner not in UNASSIGNED and not is_placeholder(owner) and owner != user:
             print(f"ОШИБКА  {ident} уже у {owner}")
+            return 1
+        if not _take_guard(ident, rel(path), user, ("владелец раздела в пуле",), force):
             return 1
         text, errs = set_fields(text, "system", {"владелец раздела в пуле": user})
         if errs:
@@ -1965,14 +2005,15 @@ def cmd_take(ident: str, force: bool) -> int:
     limit_msg = (f"ОШИБКА  у вас уже в работе {', '.join(mine)} — лимит {wip_limit()}. Сначала доведите до приёмки "
                  f"или верните: python3 kb/tools/kb.py release <ID> \"почему\"")
     step_file = rel(it["path"])
-    push_msg = ("Коммит только этого файла прямо в основную ветку, чтобы другие сразу видели: "
-                f"git commit -m \"{ident}: взял(а) рут\" -m \"Скилл: kb-take\" -- {step_file} && git push. "
-                "Push отклонён → git pull --rebase; конфликт в шапке значит, рут уже взяли: "
-                f"git rebase --abort && git checkout -- {step_file}, затем взять следующий.")
+    if not pair and not _take_guard(ident, step_file, user, ("владелец рута", "напарник"), force):
+        return 1
+    push_msg = _take_push_msg(ident, "взял(а) рут", step_file)
     if pair:
         if people_on(fm) == 2 and len(pair) == 1 and fm.get("статус") in WIP_STATUSES:
             if over:
                 print(limit_msg)
+                return 1
+            if not _take_guard(ident, step_file, user, ("напарник",), force):
                 return 1
             text, errs = set_fields(it["text"], "step", {"напарник": user})
             if errs:
@@ -2129,10 +2170,10 @@ def unfinished(user: str) -> dict:
           if l.strip() and not l[3:].startswith((".kb/", "kb-report-"))]
     branch = _git_out_safe("rev-parse", "--abbrev-ref", "HEAD")
     unpushed = _git_out_safe("log", "--oneline", "@{u}..") if _git_out_safe("rev-parse", "--abbrev-ref", "@{u}") else ""
-    main_b = "main" if _git_out_safe("rev-parse", "--verify", "-q", "main") else "master"
+    main_b = tool("kb_git").base_branch(sys.modules[__name__])
     mine = []
     for b in _git_out_safe("for-each-ref", "--format=%(refname:short)", "refs/heads").splitlines():
-        if b in (main_b,):
+        if b in (main_b, "main", "master"):
             continue
         ahead = _git_out_safe("log", "--oneline", f"{main_b}..{b}")
         if ahead:
@@ -2289,6 +2330,12 @@ def main(argv: list[str]) -> int:
         kc, ident = tool("kb_cards"), args[1].upper()
         return kc.accept(sys.modules[__name__], ident) if args[0] == "accept" else \
             kc.return_card(sys.modules[__name__], ident, args[2] if len(args) > 2 else "без причины")
+    if cmd == "branch":
+        return tool("kb_git").cmd_branch(sys.modules[__name__], args)
+    if cmd == "mr":
+        return tool("kb_git").cmd_mr(sys.modules[__name__], args)
+    if cmd == "announce":
+        return tool("kb_git").cmd_announce(sys.modules[__name__], args)
     if cmd == "take" and args:
         return cmd_take(args[0], "--force" in args)
     if cmd == "release" and len(args) in (1, 2):
