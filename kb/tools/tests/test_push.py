@@ -171,3 +171,35 @@ def test_separate_branch_only_on_request_and_into_context(pool):
     text = git(m, "show", "origin/context:" + q)
     assert "Мадина — черновик" in text and "Тимур — для карты" in text
     assert git(m, "branch", "--show-current").strip() == "context-pm01-draft"
+
+
+def test_context_log_written_on_push_and_used_by_resume(pool):
+    m, t = pool["Мадина"], pool["Тимур"]
+    q = "kb/journal/questions/Q-new-summa.md"
+    log = "kb/journal/context-log.md"
+    # Мадина: заметка с «дальше», правка, отправка
+    kb(m, "note", "подписалась на вопрос; дальше: разобрать раздел Правила PM-01")
+    kb(m, "append", "Q-new-summa", "Подписчики", "Мадина — для PM-01")
+    git(m, "commit", "-q", "-m", "Q: подписка", "--", q)
+    rc, out = kb(m, "push")
+    assert rc == 0, out
+    text = (m / log).read_text(encoding="utf-8")
+    assert "· Мадина → context" in text and "Q-new-summa: дополнен" in text
+    assert "- Дальше: разобрать раздел Правила PM-01" in text
+    assert git(m, "log", "-1", "--format=%s", "origin/context").startswith("kb: журнал контекста")
+    # Тимур отправляет после неё — журнал сливается без вопросов
+    kb(t, "append", "Q-new-summa", "Уточнения", "Тимур: в выгрузке две суммы")
+    git(t, "commit", "-q", "-m", "Q: уточнение", "--", q)
+    rc, out = kb(t, "push", "--yes")
+    assert rc == 0, out
+    # новая сессия Мадины: whoami и resume показывают, что было и что сделали коллеги
+    git(m, "pull", "-q", "--rebase")
+    rc, out = kb(m, "whoami")
+    assert "НОВОЕ в журнале контекста: коллеги отправили 1" in out and "Тимур" in out
+    rc, out = kb(m, "resume")
+    assert rc == 0, out
+    assert "Ваши последние отправки" in out and "Дальше: разобрать раздел Правила PM-01" in out
+    assert "Коллеги после вашей последней отправки: 1" in out and "· Тимур → context" in out
+    rc, out = kb(m, "log", "5")
+    assert out.count("### ") == 2
+    assert kb(m, "check")[0] == 0

@@ -31,6 +31,10 @@ from pathlib import Path
 
 GENERATED = ("kb/context/process/_index.md", "kb/journal/_index.md", "kb/context/process/_map.svg",
              "kb/context/process/_map.html", "kb/journal/_renames.tsv", "kb/materials/meetings/_index.md")
+LOG = "kb/journal/context-log.md"
+LOG_HEAD = ("# Журнал изменений контекста\n\n"
+            "Пишет только `kb.py push`: запись на каждую отправку — кто, куда, что изменилось, что дальше. "
+            "Руками не правят. Новая сессия — `python3 kb/tools/kb.py resume` или `kb.py log`.\n")
 OWNER_FIELDS = ("владелец рута", "напарник", "взял", "владелец раздела в пуле")
 CI_SUBJECT = "kb: номера и сводки"
 FACT_RE = re.compile(r"\((?:[^()]|\([^()]*\))+,\s*(подтверждено|оценка|допущение|противоречие)")
@@ -173,7 +177,7 @@ def summary(k, a: str, b: str = "HEAD") -> list[str]:
         parts = line.split("\t")
         code, path = parts[0], parts[-1]
         old = parts[1] if code.startswith("R") else path
-        if path in GENERATED or "/_template" in path or path.endswith("README.md"):
+        if path in GENERATED or path == LOG or "/_template" in path or path.endswith("README.md"):
             continue
         pb = _show(k, a, old) if not code.startswith("A") else ""
         nb = _show(k, b, path) if not code.startswith("D") else ""
@@ -382,7 +386,7 @@ def _drive_rebase(k) -> int:
 
 def _incoming(k, bref: str) -> tuple[list[str], dict[str, list[str]]]:
     """Свежие коммиты на сервере, которых у вас нет, и какие из них трогают ваши файлы (без коммитов CI)."""
-    mine = set(_out(k, "diff", "--name-only", f"{bref}...HEAD").splitlines()) - set(GENERATED)
+    mine = set(_out(k, "diff", "--name-only", f"{bref}...HEAD").splitlines()) - set(GENERATED) - {LOG}
     commits = _out(k, "log", "--format=%h\t%an\t%ad\t%s", "--date=format:%d.%m %H:%M", f"HEAD..{bref}").splitlines()
     touched: dict[str, list[str]] = {}
     for c in commits:
@@ -560,6 +564,8 @@ def _finish(k, target: str) -> int:
     bref = f"origin/{target}"
     cur = current(k)
     p = None
+    if not _out(k, "log", "-1", "--format=%s", "HEAD").startswith("kb: журнал контекста"):
+        _write_log(k, bref, target, "" if cur == target else f"влита ветка {cur}")
     for attempt in range(3):
         bad = _check(k)
         if bad:
@@ -595,6 +601,93 @@ def _finish(k, target: str) -> int:
             return rc
     print("ОШИБКА  не удалось отправить за 3 попытки: " + ((p.stderr or p.stdout).strip()[:300] if p else ""))
     return 1
+
+
+# ---------- журнал контекста ----------
+
+def _next_step(k) -> str:
+    """«Дальше: …» из последней заметки сессии (kb.py note "…; дальше: …")."""
+    f = k._session_file(k.git_user())
+    if not f.exists():
+        return ""
+    lines = [l for l in f.read_text(encoding="utf-8").splitlines() if l.strip()]
+    if not lines:
+        return ""
+    m = re.search(r"дальше:\s*(.+)$", lines[-1], re.I)
+    return m.group(1).strip() if m else ""
+
+
+def _write_log(k, bref: str, target: str, note: str = "") -> bool:
+    """Запись в журнал контекста отдельным коммитом. False — записывать нечего."""
+    lines = summary(k, bref, "HEAD")
+    if not lines and not note:
+        return False
+    import datetime as dt
+    now = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    entry = [f"### {now} · {k.git_user()} → {target}"]
+    if note:
+        entry.append(f"- {note}")
+    entry += [l.replace("• ", "- ", 1) for l in lines]
+    nxt = _next_step(k)
+    entry.append(f"- Дальше: {nxt or '—'}")
+    path = k.ROOT / LOG
+    path.parent.mkdir(parents=True, exist_ok=True)
+    old = path.read_text(encoding="utf-8") if path.exists() else LOG_HEAD
+    path.write_text(old.rstrip("\n") + "\n\n" + "\n".join(entry) + "\n", encoding="utf-8", newline="\n")
+    r = _git(k, "commit", "-q", "-m", f"kb: журнал контекста ({target})", "-m", "Скилл: kb-push", "--", LOG)
+    if r.returncode != 0:
+        _git(k, "add", "--", LOG)
+        _git(k, "commit", "-q", "-m", f"kb: журнал контекста ({target})", "-m", "Скилл: kb-push", "--", LOG)
+    return True
+
+
+def entries(k, rev: str = "") -> list[dict]:
+    """Записи журнала: [{"head": …, "who": …, "when": …, "body": […]}], старые сверху."""
+    text = _show(k, rev, LOG) if rev else ((k.ROOT / LOG).read_text(encoding="utf-8") if (k.ROOT / LOG).exists() else "")
+    out = []
+    for block in re.split(r"(?m)^### ", text)[1:]:
+        head, *body = block.strip().split("\n")
+        m = re.match(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}) · (.+?) → (\S+)", head)
+        out.append({"head": head.strip(), "when": m.group(1) if m else "", "who": m.group(2) if m else "",
+                    "to": m.group(3) if m else "", "body": [b for b in body if b.strip()]})
+    return out
+
+
+def recap(k, user: str, mine_n: int = 3, others_n: int = 10) -> list[str]:
+    """Для новой сессии: мои последние записи и что коллеги отправили после моей последней."""
+    es = entries(k)
+    if not es:
+        return ["Журнал контекста пуст: отправок через kb.py push ещё не было."]
+    my = [i for i, e in enumerate(es) if e["who"] == user]
+    out = []
+    if my:
+        out.append(f"Ваши последние отправки ({min(mine_n, len(my))} из {len(my)}):")
+        for i in my[-mine_n:]:
+            out.append("  ### " + es[i]["head"])
+            out += ["    " + b for b in es[i]["body"]]
+        after = [e for e in es[my[-1] + 1:] if e["who"] != user]
+    else:
+        out.append("Ваших отправок в журнале нет.")
+        after = es[-others_n:]
+    out.append(f"Коллеги после вашей последней отправки: {len(after)}" + (":" if after else ""))
+    for e in after[-others_n:]:
+        out.append("  ### " + e["head"])
+        out += ["    " + b for b in e["body"] if not b.startswith("- Дальше:")]
+    return out
+
+
+def cmd_log(k, args: list[str]) -> int:
+    n = int(args[0]) if args and args[0].isdigit() else 10
+    who = args[args.index("--who") + 1] if "--who" in args and args.index("--who") + 1 < len(args) else ""
+    es = [e for e in entries(k) if not who or e["who"] == who]
+    if not es:
+        print("Записей нет." if (k.ROOT / LOG).exists() else f"Журнала ещё нет: {LOG} появится после первой отправки.")
+        return 0
+    for e in es[-n:]:
+        print("### " + e["head"])
+        print("\n".join(e["body"]))
+        print()
+    return 0
 
 
 # ---------- отдельная ветка ----------

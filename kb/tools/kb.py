@@ -35,7 +35,8 @@
     python3 kb/tools/kb.py whoami                кто я: роли, стиль общения, режим, мои руты, новые ответы, вопросы, допущения, риски
     python3 kb/tools/kb.py note "<сделано>; дальше: <…>"
                                               заметка сессии в .kb/sessions/<имя>.md (локально, не в git) — для восстановления
-    python3 kb/tools/kb.py resume                сессия прервалась: незакоммиченное, неотправленное, ветки, руты в работе, заметки
+    python3 kb/tools/kb.py resume                новая сессия или сессия прервалась: журнал контекста (ваши отправки и коллег после),
+                                              незакоммиченное, неотправленное, ветки, руты в работе, заметки
     python3 kb/tools/kb.py team add <Имя> git=<почта> "роли=…" [стиль=мягкий|краткий|подробный]
     python3 kb/tools/kb.py team set <Имя> роли=… | git=… | стиль=…
     python3 kb/tools/kb.py team remove <Имя> "<причина>"
@@ -64,6 +65,7 @@
     python3 kb/tools/kb.py map sync           после ручной правки таблицы «Шаги»: создать недостающие шаги, обновить порядок
     python3 kb/tools/kb.py map                   нарисовать карту процессов: _map.svg (картинка) и _map.html (интерактивная схема)
                                               со статусами, владельцами, вопросами и декомпозитами каждого шага
+    python3 kb/tools/kb.py log [N] [--who <Имя>]   журнал изменений контекста (kb/journal/context-log.md): последние N отправок
     python3 kb/tools/kb.py branch <имя>          отдельная ветка для разработки контекста — только по просьбе человека
     python3 kb/tools/kb.py push [--yes|--continue|--abort|--into context]
                                               отправить в context (или в свою отдельную ветку): check, свежие правки коллег,
@@ -1690,6 +1692,12 @@ def cmd_whoami() -> int:
         base = kg.base_branch(sys.modules[__name__])
         print(f"Ветка: {off} — отдельная, не {base}. Агент сам ветки не переключает. Отправка уходит в {off}; "
               f"влить в {base} — по просьбе человека: kb.py push --into {base}")
+    es = kg.entries(sys.modules[__name__])
+    my_last = max((i for i, e in enumerate(es) if e["who"] == user), default=-1)
+    fresh = [e for e in es[my_last + 1:] if e["who"] != user]
+    if fresh and my_last >= 0:
+        print(f"НОВОЕ в журнале контекста: коллеги отправили {len(fresh)} раз(а) после вас — "
+              f"{', '.join(dict.fromkeys(e['who'] for e in fresh))}. Подробно: python3 kb/tools/kb.py resume")
     if u["status"] or u["unpushed"]:
         print(f"НЕЗАВЕРШЁННОЕ: не закоммичено файлов — {len(u['status'])}, не отправлено коммитов — {len(u['unpushed'])}"
               + (f"; последняя заметка: {u['notes'][-1][2:]}" if u["notes"] else "")
@@ -2190,6 +2198,9 @@ def cmd_resume() -> int:
     if kg._rebasing(sys.modules[__name__]):
         print("ОТПРАВКА НЕ ЗАКОНЧЕНА: идёт обновление с конфликтом. Покажи человеку файлы с отметками <<<<<<< "
               "и спроси, что оставить; затем, после «да» человека, python3 kb/tools/kb.py push --continue. Отменить — push --abort")
+    print("== Журнал контекста (kb/journal/context-log.md)")
+    print("\n".join(kg.recap(sys.modules[__name__], user)))
+    print("\n== Ваша рабочая копия")
     print("Не закоммичено: " + ("\n  " + "\n  ".join(u["status"]) if u["status"] else "—"))
     print("Закоммичено, но не отправлено (git push): " + ("\n  " + "\n  ".join(u["unpushed"]) if u["unpushed"] else "—"))
     print("Ветки с работой, которой нет в основной: " + ("\n  " + "\n  ".join(u["branches"]) if u["branches"] else "—"))
@@ -2337,6 +2348,8 @@ def main(argv: list[str]) -> int:
         return tool("kb_git").cmd_push(sys.modules[__name__], args)
     if cmd == "branch":
         return tool("kb_git").cmd_branch(sys.modules[__name__], args)
+    if cmd == "log":
+        return tool("kb_git").cmd_log(sys.modules[__name__], args)
     if cmd == "announce":
         return tool("kb_git").cmd_announce(sys.modules[__name__], args)
     if cmd == "take" and args:
