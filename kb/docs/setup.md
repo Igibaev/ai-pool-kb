@@ -38,8 +38,8 @@ OpenCode тоже работает с этим репозиторием, в то
 
 | Где | Что | Зачем |
 |---|---|---|
-| Settings → Repository → Protected branches | `develop`: Allowed to push — Developers | Все работают в `develop` и отправляют через `kb.py push`; иначе push отклонят. Подробно — [git.md](git.md) |
-| Settings → CI/CD → Variables | `KB_PUSH_TOKEN` — токен с правом push в `develop` (masked) | CI коммитит номера и сводки после каждого push в `develop` |
+| Settings → Repository → Protected branches | `context`: Allowed to push — Developers | Все работают в `context` и отправляют через `kb.py push`; иначе push отклонят. Подробно — [git.md](git.md) |
+| Settings → CI/CD → Variables | `KB_PUSH_TOKEN` — токен с правом push в `context` (masked) | CI коммитит номера и сводки после каждого push в `context` |
 | Settings → Merge requests → Approvals | Не обязательно: обязательное ревью только для первого рута новичка, чужого файла и ядра — назначают ревьюера вручную | — |
 
 ## 2. Открыть в Claude desktop

@@ -1,7 +1,11 @@
-"""Все работают в одной ветке (develop). Отправка — только через агента: kb.py push.
+"""База знаний живёт в одной ветке — context. Агент сам ветки не переключает.
+Отдельная ветка — только по просьбе человека: kb.py branch <имя>.
+Отправка — только через агента и только с согласия человека: kb.py push.
 
-kb.py push                 проверить (check), показать свежие правки develop в ваших файлах, обновиться (rebase),
-                           разрулить конфликты, отправить; напечатать текст для группы
+kb.py branch <имя>         отдельная ветка для разработки контекста — только когда человек попросил
+kb.py push                 в context: check, свежие правки коллег в ваших файлах, обновление (rebase),
+                           конфликты, отправка, текст для группы. В отдельной ветке — то же, но в эту ветку
+kb.py push --into context  влить отдельную ветку в context (по просьбе человека)
 kb.py push --yes           то же, когда человек посмотрел свежие правки коллег и согласен
 kb.py push --continue      после того как человек решил конфликт, который агент сам не решает
 kb.py push --abort         отменить обновление, вернуть всё как было до push
@@ -10,12 +14,12 @@ kb.py announce [--since]   текст для группы: что вы отпр�
 Агент решает сам:
   - чужие правки в других местах ваших файлов — git сливает сам, агент только показывает;
   - обе стороны дописали строки в одно место (подписчики, история, факты) — остаются обе;
-  - сгенерированные файлы (_index.md, карта, _renames.tsv) — берётся версия develop.
+  - сгенерированные файлы (_index.md, карта, _renames.tsv) — берётся версия с сервера.
 Агент показывает человеку и ждёт решения:
   - одна и та же строка или поле шапки изменены по-разному.
 Конфликт в «владелец рута», «напарник», «взял» — рут или карточку уже взяли: взятие отменяется.
 
-Основная ветка — поле «основная ветка» в шапке kb/team.md; нет поля — develop, если она есть, иначе main.
+Основная ветка — поле «основная ветка» в шапке kb/team.md; нет поля — context, если она есть.
 """
 from __future__ import annotations
 
@@ -31,6 +35,13 @@ OWNER_FIELDS = ("владелец рута", "напарник", "взял", "в
 CI_SUBJECT = "kb: номера и сводки"
 FACT_RE = re.compile(r"\((?:[^()]|\([^()]*\))+,\s*(подтверждено|оценка|допущение|противоречие)")
 JOURNAL = {"questions": "Вопросы", "assumptions": "Допущения", "decisions": "Решения", "risks": "Риски"}
+_T = ["context"]   # куда идёт текущая отправка — для сообщений
+
+
+def T() -> str:
+    return _T[0]
+
+
 ENV = dict(os.environ, GIT_EDITOR="true", GIT_SEQUENCE_EDITOR="true", GIT_TERMINAL_PROMPT="0")
 
 
@@ -72,10 +83,10 @@ def base_branch(k) -> str:
         v = ""
     if v and "<" not in v:
         return v
-    for b in ("develop", "main", "master"):
+    for b in ("context", "develop", "main", "master"):
         if _exists(k, b) or _exists(k, f"origin/{b}"):
             return b
-    return "develop"
+    return "context"
 
 
 def fetch(k) -> bool:
@@ -243,11 +254,11 @@ def summary(k, a: str, b: str = "HEAD") -> list[str]:
     return out
 
 
-def _announce_text(k, lines: list[str]) -> str:
-    base = base_branch(k)
+def _announce_text(k, lines: list[str], target: str = "") -> str:
+    target = target or base_branch(k)
     body = "\n".join(lines) if lines else "• правки оформления, знания не менялись"
-    return (f"Отправил(а) в {base} — {k.git_user()}\n{body}\n"
-            "Перед работой обновитесь: попросите агента «обнови develop» (git pull --rebase).")
+    return (f"Отправил(а) в {target} — {k.git_user()}\n{body}\n"
+            f"Перед работой обновитесь: попросите агента «обнови {T()}» (git pull --rebase).")
 
 
 def _saved(k) -> Path:
@@ -274,13 +285,13 @@ def _val(lines: str, field: str) -> str:
 
 
 def resolve_file(k, path: str) -> dict:
-    """Разрулить конфликт в файле. В rebase верхняя часть — то, что уже в develop; нижняя — ваш коммит.
+    """Разрулить конфликт в файле. В rebase верхняя часть — то, что уже на сервере; нижняя — ваш коммит.
     Возвращает {"state": auto|manual|taken, "hunks": [...], "who": …}."""
     full = k.ROOT / path
     if path in GENERATED:
         _git(k, "checkout", "--ours", "--", path)
         _git(k, "add", "--", path)
-        return {"state": "auto", "hunks": ["сгенерированный файл — взята версия develop, CI пересоберёт"]}
+        return {"state": "auto", "hunks": [f"сгенерированный файл — взята версия {T()}, CI пересоберёт"]}
     if not full.exists():
         return {"state": "manual", "hunks": ["файл удалён с одной стороны и изменён с другой — решите, нужен ли он"]}
     raw = full.read_bytes().decode("utf-8", errors="replace")
@@ -311,7 +322,7 @@ def resolve_file(k, path: str) -> dict:
             merged = "".join(dev_lines) + "".join(add)
             if merged and not merged.endswith("\n"):
                 merged += "\n"
-            auto.append(f"обе стороны дописали строки в одно место — оставлены обе ({len(dev_lines)} из develop, {len(add)} ваших)")
+            auto.append(f"обе стороны дописали строки в одно место — оставлены обе ({len(dev_lines)} из {T()}, {len(add)} ваших)")
             return merged
         manual.append(("текст", dev, base, mine))
         return m.group(0)
@@ -324,7 +335,7 @@ def resolve_file(k, path: str) -> dict:
         return {"state": "manual", "hunks": auto + [
             f"{where}: одна и та же строка изменена по-разному\n"
             f"      было:       {b.strip()[:300] or '—'}\n"
-            f"      в develop:  {d.strip()[:300] or '—'}\n"
+            f"      в {T()}:  {d.strip()[:300] or '—'}\n"
             f"      у вас:      {mn.strip()[:300] or '—'}" for where, d, b, mn in manual]}
     _git(k, "add", "--", path)
     return {"state": "auto", "hunks": auto}
@@ -351,18 +362,18 @@ def _drive_rebase(k) -> int:
         if taken:
             _git(k, "rebase", "--abort")
             for f, who in taken:
-                print(f"ВЗЯТО ДРУГИМ  {f} — в develop уже {who}. Ваше взятие не отправлено.")
+                print(f"ВЗЯТО ДРУГИМ  {f} — в {T()} уже {who}. Ваше взятие не отправлено.")
             return 5
         if need:
             print("\nНУЖЕН ЧЕЛОВЕК  агент не выбирает сам между двумя версиями одной строки.\n"
-                  "Покажи человеку «было / в develop / у вас» по каждому месту выше и спроси, что оставить: "
-                  "версию develop, свою, обе или новую формулировку. Исправь файл — убери отметки "
+                  f"Покажи человеку «было / в {T()} / у вас» по каждому месту выше и спроси, что оставить: "
+                  f"версию {T()}, свою, обе или новую формулировку. Исправь файл — убери отметки "
                   "<<<<<<< ||||||| ======= >>>>>>> — покажи человеку итог и спроси «Отправить?»; после «да»: python3 kb/tools/kb.py push --continue. "
                   "Передумали — push --abort.\nФайлы: " + ", ".join(need))
             return 4
         r = _git(k, "rebase", "--continue")
         if r.returncode != 0 and _rebasing(k) and not _conflicted(k):
-            r = _git(k, "rebase", "--skip")   # коммит стал пустым: ваша правка уже есть в develop
+            r = _git(k, "rebase", "--skip")   # коммит стал пустым: ваша правка уже есть на сервере
             if r.returncode != 0 and not _conflicted(k):
                 print("ОШИБКА  обновление не продолжилось: " + (r.stderr or r.stdout).strip()[:400])
                 return 4
@@ -370,7 +381,7 @@ def _drive_rebase(k) -> int:
 
 
 def _incoming(k, bref: str) -> tuple[list[str], dict[str, list[str]]]:
-    """Свежие коммиты develop, которых у вас нет, и какие из них трогают ваши файлы (без коммитов CI)."""
+    """Свежие коммиты на сервере, которых у вас нет, и какие из них трогают ваши файлы (без коммитов CI)."""
     mine = set(_out(k, "diff", "--name-only", f"{bref}...HEAD").splitlines()) - set(GENERATED)
     commits = _out(k, "log", "--format=%h\t%an\t%ad\t%s", "--date=format:%d.%m %H:%M", f"HEAD..{bref}").splitlines()
     touched: dict[str, list[str]] = {}
@@ -395,7 +406,7 @@ def _owner_clash(k, bref: str) -> list[str]:
         for fld in OWNER_FIELDS:
             mv, dv, bv = str(me.get(fld, "")), str(dev.get(fld, "")), str(b.get(fld, ""))
             if mv != bv and dv != bv and dv != mv and dv not in k.UNASSIGNED and dv != "—":
-                out.append(f"{f} — в develop уже {fld}: {dv}")
+                out.append(f"{f} — в {T()} уже {fld}: {dv}")
     return out
 
 
@@ -407,13 +418,18 @@ def _preview_conflicts(k, bref: str) -> list[str]:
 
 # ---------- push ----------
 
+def _target_file(k) -> Path:
+    g = Path(_out(k, "rev-parse", "--git-dir") or ".git")
+    return (g if g.is_absolute() else k.ROOT / g) / "kb-push-target"
+
+
 def cmd_push(k, args: list[str]) -> int:
     base = base_branch(k)
-    bref = f"origin/{base}"
     if not has_remote(k):
         print("Сервера (remote) нет — отправлять некуда. Соло без сервера: коммиты остаются у вас, "
               "затем python3 kb/tools/kb.py after-merge.")
         return 0
+    tf = _target_file(k)
     if "--abort" in args:
         if _rebasing(k):
             _git(k, "rebase", "--abort")
@@ -425,6 +441,8 @@ def cmd_push(k, args: list[str]) -> int:
         if not _rebasing(k):
             print("Продолжать нечего: обновление не идёт. Отправить: python3 kb/tools/kb.py push")
             return 1
+        target = tf.read_text(encoding="utf-8").strip() if tf.exists() else base
+        _T[0] = target
         conf = _conflicted(k)
         left = [f for f in conf if (k.ROOT / f).exists()
                 and "<<<<<<< " in (k.ROOT / f).read_text(encoding="utf-8", errors="replace")]
@@ -435,17 +453,30 @@ def cmd_push(k, args: list[str]) -> int:
             _git(k, "add", "--", f)
         rc = _drive_rebase(k)
         if rc == 5:
-            _undo_take(k, bref)
-        return rc or _finish(k, base)
+            _undo_take(k, f"origin/{target}")
+        return rc or _finish(k, target)
     if _rebasing(k):
         print("Идёт обновление с конфликтом. Решите его и: python3 kb/tools/kb.py push --continue; "
               "или отмените: push --abort. Файлы: " + ", ".join(_conflicted(k)))
         return 4
     cur = current(k)
-    if cur != base:
-        print(f"ОШИБКА  вы в ветке {cur}, а все работают в {base}. Перенести коммиты: "
-              f"git checkout {base} && git cherry-pick {base}..{cur} — сначала спросите человека, что это за ветка")
+    if cur in ("HEAD", ""):
+        print("ОШИБКА  вы не в ветке (отсоединённый HEAD). Спросите человека, в какую ветку вернуться")
         return 1
+    into = args[args.index("--into") + 1] if "--into" in args and args.index("--into") + 1 < len(args) else ""
+    if into:
+        if into == cur:
+            print(f"ОШИБКА  вы и так в {cur}: отправка — просто python3 kb/tools/kb.py push")
+            return 1
+        target = into
+    else:
+        target = cur          # context — в context; отдельная ветка — в неё же
+    _T[0] = target
+    bref = f"origin/{target}"
+    tf.write_text(target, encoding="utf-8")
+    if target != base and not into:
+        print(f"Отдельная ветка {cur}: отправка уходит в неё, не в {base}. "
+              f"Влить в {base} — только по просьбе человека: python3 kb/tools/kb.py push --into {base}")
     d = dirty(k)
     if d:
         print("ОШИБКА  есть незакоммиченные файлы. Закоммитьте свои по именам (git commit … -- <файлы>), "
@@ -453,19 +484,24 @@ def cmd_push(k, args: list[str]) -> int:
         return 1
     bad = _check(k)
     if bad:
-        print(f"ОШИБКА  kb.py check: {bad}. В {base} с ошибками не отправляем — исправьте и закоммитьте.")
+        print(f"ОШИБКА  kb.py check: {bad}. В {target} с ошибками не отправляем — исправьте и закоммитьте.")
         return 1
     if not fetch(k):
-        print("ОШИБКА  не удалось получить свежий develop с сервера (git fetch). Проверьте сеть и повторите.")
+        print(f"ОШИБКА  не удалось получить свежий {T()} с сервера (git fetch). Проверьте сеть и повторите.")
         return 1
     if not _exists(k, bref):
-        r = _git(k, "push", "-u", "origin", base)
-        print(f"Ветки {base} на сервере не было — создана и отправлена." if r.returncode == 0 else
+        if into:
+            print(f"ОШИБКА  ветки {target} на сервере нет — вливать некуда")
+            return 1
+        r = _git(k, "push", "-u", "origin", target)
+        print(f"Ветки {target} на сервере не было — создана и отправлена." if r.returncode == 0 else
               "ОШИБКА  " + (r.stderr or r.stdout).strip()[:400])
         return 0 if r.returncode == 0 else 1
     if _out(k, "rev-list", "--count", f"{bref}..HEAD") in ("", "0"):
-        _git(k, "merge", "--ff-only", "--quiet", bref)
-        print(f"Отправлять нечего: ваших новых коммитов нет. {base} обновлена до свежей.")
+        if not into:
+            _git(k, "merge", "--ff-only", "--quiet", bref)
+        print(f"Отправлять нечего: ваших новых коммитов нет относительно {target}."
+              + ("" if into else f" {target} обновлена до свежей."))
         return 0
     commits, touched = _incoming(k, bref)
     clash = _owner_clash(k, bref)
@@ -475,7 +511,7 @@ def cmd_push(k, args: list[str]) -> int:
         _undo_take(k, bref)
         return 5
     if touched and "--yes" not in args:
-        print(f"== В {base} свежие правки коллег в ваших файлах")
+        print(f"== В {target} свежие правки коллег в ваших файлах")
         for f, cs in touched.items():
             print(f"\n# {f}")
             for c in cs[:5]:
@@ -497,7 +533,7 @@ def cmd_push(k, args: list[str]) -> int:
         return 3
     others = [c for c in commits if not c.split("\t")[-1].startswith(CI_SUBJECT)]
     if commits:
-        print(f"Обновляюсь: в {base} новых коммитов — {len(commits)}"
+        print(f"Обновляюсь: в {target} новых коммитов — {len(commits)}"
               + (f", из них коллег — {len(others)}" if others else ", все от CI"))
     r = _git(k, "rebase", bref)
     if r.returncode != 0 and not _rebasing(k):
@@ -506,22 +542,23 @@ def cmd_push(k, args: list[str]) -> int:
     rc = _drive_rebase(k)
     if rc == 5:
         _undo_take(k, bref)
-    return rc or _finish(k, base)
+    return rc or _finish(k, target)
 
 
 def _undo_take(k, bref: str) -> None:
     mine = _out(k, "log", "--format=%h %s", f"{bref}..HEAD").splitlines()
     if len(mine) == 1 and re.search(r"взял|напарник", mine[0]):
         _git(k, "reset", "--hard", bref)
-        print("Ваш единственный неотправленный коммит — взятие: он отменён, develop обновлена. "
+        print(f"Ваш единственный неотправленный коммит — взятие: он отменён, {T()} обновлена. "
               "Возьмите другой рут или карточку: /kb-take")
     else:
         print("Кроме взятия, у вас есть другие неотправленные коммиты. Отмените только взятие: "
               f"git log {bref}..HEAD — найдите коммит «… взял(а) …», git revert <хеш>, затем снова push.")
 
 
-def _finish(k, base: str) -> int:
-    bref = f"origin/{base}"
+def _finish(k, target: str) -> int:
+    bref = f"origin/{target}"
+    cur = current(k)
     p = None
     for attempt in range(3):
         bad = _check(k)
@@ -529,15 +566,22 @@ def _finish(k, base: str) -> int:
             print(f"ОШИБКА  после обновления kb.py check: {bad}. Исправьте, закоммитьте и снова push.")
             return 1
         start = _out(k, "rev-parse", bref)
-        p = _git(k, "push", "origin", f"HEAD:{base}")
+        p = _git(k, "push", "origin", f"HEAD:{target}")
         if p.returncode == 0:
-            text = _announce_text(k, summary(k, start, "HEAD"))
+            text = _announce_text(k, summary(k, start, "HEAD"), target)
             sv = _saved(k)
             sv.parent.mkdir(parents=True, exist_ok=True)
             sv.write_text(text + "\n", encoding="utf-8")
             fetch(k)
-            _git(k, "branch", f"--set-upstream-to={bref}")
-            print(f"Отправлено в {base}.\n\n== Текст для группы — скопируйте в чат команды\n{text}")
+            _target_file(k).unlink(missing_ok=True)
+            if cur == target:
+                _git(k, "branch", f"--set-upstream-to={bref}")
+                print(f"Отправлено в {target}.")
+            else:
+                print(f"Ветка {cur} влита в {target}. Вы остаётесь в {cur}: сам агент ветки не переключает. "
+                      f"Вернуться в {target} — по просьбе человека: git checkout {target} && git pull --rebase. "
+                      f"Ветка {cur} больше не нужна — удалить её может человек.")
+            print(f"\n== Текст для группы — скопируйте в чат команды\n{text}")
             return 0
         if attempt == 2:
             break
@@ -551,6 +595,43 @@ def _finish(k, base: str) -> int:
             return rc
     print("ОШИБКА  не удалось отправить за 3 попытки: " + ((p.stderr or p.stdout).strip()[:300] if p else ""))
     return 1
+
+
+# ---------- отдельная ветка ----------
+
+def cmd_branch(k, args: list[str]) -> int:
+    """Отдельная ветка для разработки контекста — только когда человек сам попросил и назвал имя."""
+    base = base_branch(k)
+    if not args or args[0].startswith("-"):
+        print(f"Как: python3 kb/tools/kb.py branch <имя, которое назвал человек>. "
+              f"Без просьбы человека ветки не создаём: все работают в {base}.")
+        return 2
+    name = args[0].strip()
+    if _git(k, "check-ref-format", "--branch", name).returncode != 0:
+        print(f"ОШИБКА  «{name}» не годится как имя ветки: без пробелов, без «..», «~», «^», «:». Спросите другое имя")
+        return 1
+    if name == base:
+        print(f"{base} — основная ветка, создавать не нужно")
+        return 1
+    d = dirty(k)
+    if d:
+        print("ОШИБКА  есть незакоммиченные файлы — сначала закоммитьте их там, где вы сейчас:\n  " + "\n  ".join(d[:15]))
+        return 1
+    if _exists(k, name) or (has_remote(k) and fetch(k) and _exists(k, f"origin/{name}")):
+        print(f"ОШИБКА  ветка {name} уже есть. Переключиться на неё — только если человек этого хочет: git checkout {name}")
+        return 1
+    start = f"origin/{base}" if _exists(k, f"origin/{base}") else base
+    if not _exists(k, start):
+        print(f"ОШИБКА  нет ветки {base}, отделяться не от чего")
+        return 1
+    r = _git(k, "checkout", "--quiet", "-b", name, "--no-track", start)
+    if r.returncode != 0:
+        print("ОШИБКА  " + (r.stderr or r.stdout).strip()[:300])
+        return 1
+    print(f"Ветка {name} создана от свежей {base}, вы в ней. Отправка — python3 kb/tools/kb.py push "
+          f"(с согласия человека) уходит в {name}. Влить в {base} — по просьбе человека: "
+          f"python3 kb/tools/kb.py push --into {base}. Брать руты и карточки — только в {base}.")
+    return 0
 
 
 # ---------- announce ----------

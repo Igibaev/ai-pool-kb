@@ -47,7 +47,7 @@
                                               дописать строку в раздел (Подписчики, Уточнения, История, Ответ, разделы шага)
     python3 kb/tools/kb.py fact <PM-XX|SYS-XX> "<Раздел>" "<текст>" "<источник>" <статус>
                                               дописать факт в правильном формате: «текст (источник, статус)»
-    python3 kb/tools/kb.py assign-ids            присвоить номера временным ID (только в основной ветке — develop, в CI)
+    python3 kb/tools/kb.py assign-ids            присвоить номера временным ID (только в основной ветке — context, в CI)
     python3 kb/tools/kb.py refs <ID>             найти все места, где упоминается ID
     python3 kb/tools/kb.py context <PM-XX|SYS-XX> всё нужное для работы с шагом одной выжимкой: кто работает, место на карте,
                                               файл шага, открытые вопросы, допущения, риски, решения, глоссарий, нарезка других рутов
@@ -64,8 +64,9 @@
     python3 kb/tools/kb.py map sync           после ручной правки таблицы «Шаги»: создать недостающие шаги, обновить порядок
     python3 kb/tools/kb.py map                   нарисовать карту процессов: _map.svg (картинка) и _map.html (интерактивная схема)
                                               со статусами, владельцами, вопросами и декомпозитами каждого шага
-    python3 kb/tools/kb.py push [--yes|--continue|--abort]
-                                              отправить в develop: check, показать свежие правки коллег в ваших файлах,
+    python3 kb/tools/kb.py branch <имя>          отдельная ветка для разработки контекста — только по просьбе человека
+    python3 kb/tools/kb.py push [--yes|--continue|--abort|--into context]
+                                              отправить в context (или в свою отдельную ветку): check, свежие правки коллег,
                                               обновиться, разрулить конфликты, push, текст для группы
     python3 kb/tools/kb.py announce [--since <хеш|дата>]
                                               текст для группы: что вы отправили в базу знаний
@@ -1686,8 +1687,9 @@ def cmd_whoami() -> int:
     kg = tool("kb_git")
     off = kg.off_base(sys.modules[__name__])
     if off:
-        print(f"ВНИМАНИЕ  вы в ветке {off}, а все работают в {kg.base_branch(sys.modules[__name__])}. "
-              "Спросите человека, что это за ветка, прежде чем работать")
+        base = kg.base_branch(sys.modules[__name__])
+        print(f"Ветка: {off} — отдельная, не {base}. Агент сам ветки не переключает. Отправка уходит в {off}; "
+              f"влить в {base} — по просьбе человека: kb.py push --into {base}")
     if u["status"] or u["unpushed"]:
         print(f"НЕЗАВЕРШЁННОЕ: не закоммичено файлов — {len(u['status'])}, не отправлено коммитов — {len(u['unpushed'])}"
               + (f"; последняя заметка: {u['notes'][-1][2:]}" if u["notes"] else "")
@@ -1937,13 +1939,14 @@ def cmd_ready() -> int:
 
 
 def _take_guard(ident: str, relpath: str, user: str, fields: tuple[str, ...], force: bool) -> bool:
-    """Команда: все работают в основной ветке; брать рут в другой ветке нельзя — гонку ловит push в develop."""
+    """Брать руты и карточки — только в основной ветке (context): гонку ловит push в неё."""
     kg = tool("kb_git")
     me = sys.modules[__name__]
     cur = kg.off_base(me)
     if cur:
-        print(f"ОШИБКА  вы в ветке {cur}, а все работают в {kg.base_branch(me)}. "
-              f"Переключитесь: git checkout {kg.base_branch(me)} && git pull --rebase, затем take {ident} снова")
+        print(f"ОШИБКА  вы в отдельной ветке {cur}. Руты и карточки берут только в {kg.base_branch(me)}: "
+              "там взятие сразу видят все. Сам ветку не переключай — спроси человека: "
+              f"«Переключиться в {kg.base_branch(me)}, чтобы взять {ident}?»")
         return False
     return True
 
@@ -1954,7 +1957,7 @@ def _take_push_msg(ident: str, what: str, files: str) -> str:
     commit = f"git commit -m \"{ident}: {what}\" -m \"Скилл: kb-take\" -- {files}"
     if not kg.has_remote(me):
         return f"Коммит: {commit}"
-    return (f"Сразу коммит: {commit}. Затем спросите человека «Отправить взятие в develop сейчас? Пока не отправлено, "
+    return (f"Сразу коммит: {commit}. Затем спросите человека «Отправить взятие в {kg.base_branch(me)} сейчас? Пока не отправлено, "
             "рут для других свободен». Только после «да» — python3 kb/tools/kb.py push. "
             "push скажет «ВЗЯТО ДРУГИМ», если кто-то успел раньше, — тогда взять следующий.")
 
@@ -2332,6 +2335,8 @@ def main(argv: list[str]) -> int:
             kc.return_card(sys.modules[__name__], ident, args[2] if len(args) > 2 else "без причины")
     if cmd == "push":
         return tool("kb_git").cmd_push(sys.modules[__name__], args)
+    if cmd == "branch":
+        return tool("kb_git").cmd_branch(sys.modules[__name__], args)
     if cmd == "announce":
         return tool("kb_git").cmd_announce(sys.modules[__name__], args)
     if cmd == "take" and args:
