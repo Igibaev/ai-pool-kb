@@ -2182,6 +2182,10 @@ def cmd_resume() -> int:
     user = git_user()
     u = unfinished(user)
     print(f"Кто: {user}; ветка сейчас: {u['branch'] or '?'}")
+    kg = tool("kb_git")
+    if kg._rebasing(sys.modules[__name__]):
+        print("ОТПРАВКА НЕ ЗАКОНЧЕНА: идёт обновление с конфликтом. Покажи человеку файлы с отметками <<<<<<< "
+              "и спроси, что оставить; затем python3 kb/tools/kb.py push --continue. Отменить — push --abort")
     print("Не закоммичено: " + ("\n  " + "\n  ".join(u["status"]) if u["status"] else "—"))
     print("Закоммичено, но не отправлено (git push): " + ("\n  " + "\n  ".join(u["unpushed"]) if u["unpushed"] else "—"))
     print("Ветки с работой, которой нет в основной: " + ("\n  " + "\n  ".join(u["branches"]) if u["branches"] else "—"))
