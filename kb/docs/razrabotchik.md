@@ -6,7 +6,7 @@
 
 1. `git config user.name "Имя"` и `git config user.email "рабочая почта"` в папке репозитория.
 2. Попросите аналитика добавить вас в `kb/team.md`. Агент скажет, если вас там нет.
-3. Откройте корень репозитория в Claude Code или OpenCode. На Windows вместо `python3` — `python` или `py -3`.
+3. Откройте корень репозитория в Claude Code или OpenCode. В OpenCode проверьте, что выбран агент `kb`: [opencode.md](opencode.md), раздел 3. На Windows вместо `python3` — `python` или `py -3`.
 4. Один раз: `pip install pypdf openpyxl py7zr` — чтобы агент читал PDF, Excel и архивы.
 
 ## Путь рута — по шагам
