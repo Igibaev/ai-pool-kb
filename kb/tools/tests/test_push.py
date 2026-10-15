@@ -203,3 +203,21 @@ def test_context_log_written_on_push_and_used_by_resume(pool):
     rc, out = kb(m, "log", "5")
     assert out.count("### ") == 2
     assert kb(m, "check")[0] == 0
+
+
+def test_push_explains_access_error_and_forbids_workarounds(pool):
+    m = pool["Мадина"]
+    q = "kb/journal/questions/Q-new-summa.md"
+    kb(m, "append", "Q-new-summa", "Подписчики", "Мадина — для PM-01")
+    git(m, "commit", "-q", "-m", "Q: подписка", "--", q)
+    git(m, "remote", "set-url", "origin", "git@git.example.ru:group/project.git")
+    fake_ssh = "sh -c 'echo \"git@git.example.ru: Permission denied (publickey).\" >&2; exit 255'"
+    rc, out = run_kb(m, "push", env={"GIT_SSH_COMMAND": fake_ssh})
+    assert rc == 1, out
+    assert "ОШИБКА ДОСТУПА" in out and "нет доступа по SSH" in out
+    assert "ssh -T git@git.example.ru" in out
+    assert "АГЕНТУ: не обходи" in out
+    # токен в адресе — предупреждение, сам токен не печатается
+    git(m, "remote", "set-url", "origin", "https://user:s3cret@git.example.invalid/group/project.git")
+    rc, out = run_kb(m, "push")
+    assert rc == 1 and "записан пароль или токен" in out and "s3cret" not in out

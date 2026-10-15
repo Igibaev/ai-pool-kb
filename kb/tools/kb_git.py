@@ -93,15 +93,63 @@ def base_branch(k) -> str:
     return "context"
 
 
+_FETCH_ERR = [""]
+
+
 def fetch(k) -> bool:
+    _FETCH_ERR[0] = ""
     if not has_remote(k):
         return False
     try:
         r = subprocess.run(["git", "fetch", "--quiet", "origin"], cwd=k.ROOT, capture_output=True,
                            text=True, encoding="utf-8", timeout=90, env=ENV)
+        _FETCH_ERR[0] = (r.stderr or r.stdout).strip()
         return r.returncode == 0
-    except (subprocess.TimeoutExpired, FileNotFoundError):
+    except subprocess.TimeoutExpired:
+        _FETCH_ERR[0] = "timeout"
         return False
+    except FileNotFoundError:
+        _FETCH_ERR[0] = "git not found"
+        return False
+
+
+def _safe_url(url: str) -> str:
+    return re.sub(r"(https?://)[^/@\s]+@", r"\1***@", url)
+
+
+def access_help(k, err: str = "") -> str:
+    """Понятное объяснение, почему сервер не отвечает, и что настроить человеку. Агенту — не обходить."""
+    err = err or _FETCH_ERR[0]
+    url = _out(k, "remote", "get-url", "origin")
+    ssh = url.startswith(("git@", "ssh://"))
+    low = err.lower()
+    if any(x in low for x in ("permission denied (publickey)", "host key verification failed",
+                              "could not read from remote repository")) and ssh:
+        why = ("нет доступа по SSH: в этой среде нет SSH-ключа или он не подходит. "
+               "На Windows ключ часто лежит в %USERPROFILE%\\.ssh, а OpenCode запускает команды в WSL или другой "
+               "оболочке со своей пустой ~/.ssh.")
+        fix = (f"проверьте в том же терминале, где работает агент: ssh -T {url.split(':')[0]} . "
+               "Не проходит — добавьте ключ в эту среду или переведите origin на HTTPS один раз сами: "
+               "git remote set-url origin https://<сервер>/<группа>/<проект>.git (пароль хранит Git Credential Manager)")
+    elif any(x in low for x in ("authentication failed", "could not read username", "401", "403",
+                                "terminal prompts disabled", "invalid username or password")):
+        why = "нет доступа по HTTPS: логин, пароль или токен не настроены или устарели."
+        fix = ("выполните в обычном терминале git fetch origin и введите данные — их запомнит Git Credential Manager. "
+               "Токен в адрес remote не вписывайте")
+    elif any(x in low for x in ("could not resolve host", "timed out", "timeout", "connection refused",
+                                "network is unreachable", "failed to connect")):
+        why = "сервер недоступен: сеть, VPN или прокси."
+        fix = "подключите VPN или сеть и повторите"
+    else:
+        why = "git fetch не прошёл."
+        fix = "посмотрите текст ошибки ниже"
+    warn = ""
+    if re.match(r"https?://[^/@\s]+:[^/@\s]+@", url):
+        warn = "\nВНИМАНИЕ  в адресе origin записан пароль или токен — уберите его: git remote set-url origin <адрес без пароля>."
+    return (f"ОШИБКА ДОСТУПА  origin = {_safe_url(url) or '—'}\nПричина: {why}\nЧто сделать человеку: {fix}.{warn}\n"
+            f"Текст git: {_safe_url(err)[:400] or '—'}\n"
+            "АГЕНТУ: не обходи. Не меняй remote, не подставляй другой адрес, не ищи пароли и токены, "
+            "не делай pull и push по прямому адресу. Покажи это человеку и жди, пока он настроит доступ.")
 
 
 def dirty(k) -> list[str]:
@@ -491,7 +539,7 @@ def cmd_push(k, args: list[str]) -> int:
         print(f"ОШИБКА  kb.py check: {bad}. В {target} с ошибками не отправляем — исправьте и закоммитьте.")
         return 1
     if not fetch(k):
-        print(f"ОШИБКА  не удалось получить свежий {T()} с сервера (git fetch). Проверьте сеть и повторите.")
+        print(access_help(k))
         return 1
     if not _exists(k, bref):
         if into:
