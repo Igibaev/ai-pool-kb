@@ -1,0 +1,9 @@
+{
+  "models": {
+    "light": "",
+    "medium": "",
+    "heavy": "",
+    "internal": ""
+  },
+  "secrets_from_env": "Ключи, токены и cookie — только в переменных окружения, здесь их нет"
+}
