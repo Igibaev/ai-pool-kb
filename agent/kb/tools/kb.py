@@ -20,6 +20,8 @@
     python3 kb/tools/kb.py step status PM-XX "<статус>" [--reason "…"]
     python3 kb/tools/kb.py take PM-XX         взять шаг
     python3 kb/tools/kb.py report morning [--since <ГГГГ-ММ-ДД|хеш>] [--save]   полный утренний отчёт
+    python3 kb/tools/kb.py where              где я, что дальше и почему
+    python3 kb/tools/kb.py models             какие модели заданы для агентов
 """
 from __future__ import annotations
 
@@ -220,6 +222,35 @@ def cmd_report(args: list[str]) -> int:
     return kbreport.morning(kbbase.kb_root(), since, "--save" in args)
 
 
+def cmd_where(args: list[str]) -> int:
+    root = kbbase.kb_root()
+    team = kbbase.Team(root)
+    person = current_person(team)
+    return 1 if person is None else kbsteps.where(root, team, person)
+
+
+MODEL_ENV = {"light": "KB_MODEL_LIGHT", "medium": "KB_MODEL_MEDIUM", "dialog": "KB_MODEL_DIALOG",
+             "heavy": "KB_MODEL_HEAVY", "internal": "KB_MODEL_INTERNAL", "internal_think": "KB_MODEL_INTERNAL_THINK"}
+
+
+def cmd_models(args: list[str]) -> int:
+    import json
+    import os
+    root = kbbase.kb_root()
+    path = root / "ai.json"
+    names = json.loads(path.read_text(encoding="utf-8")).get("models", {}) if path.is_file() else {}
+    missing = 0
+    print("Уровень | Модель в kb/ai.json | Переменная окружения | Значение")
+    for key, env in MODEL_ENV.items():
+        value = os.environ.get(env, "")
+        missing += 0 if value else 1
+        print(f"{key} | {names.get(key, '—')} | {env} | {value or 'НЕ ЗАДАНО'}")
+    if missing:
+        print(f"Не задано переменных: {missing}. Точные ID моделей — из `opencode models`, формат provider/model-id.")
+        print("Пример: export KB_MODEL_HEAVY=zai/glm-5.3")
+    return 1 if missing else 0
+
+
 def cmd_views(args: list[str]) -> int:
     changed = kbquestions.write_views(kbbase.kb_root())
     print(f"Списки пересобраны: {', '.join(changed)}" if changed else "Списки не изменились")
@@ -257,7 +288,7 @@ def cmd_hooks(args: list[str]) -> int:
 COMMANDS = {"check": cmd_check, "fact": cmd_fact, "whoami": cmd_whoami, "commit": cmd_commit,
             "precommit": cmd_precommit, "hooks": cmd_hooks, "similar": cmd_similar, "ask": cmd_ask,
             "q": cmd_q, "views": cmd_views, "step": cmd_step, "take": cmd_take,
-            "report": cmd_report}
+            "report": cmd_report, "where": cmd_where, "models": cmd_models}
 
 
 def main(argv: list[str]) -> int:

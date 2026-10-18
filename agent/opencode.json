@@ -43,7 +43,8 @@
       "*&& git commit*": "deny",
       "*; git commit*": "deny",
       "*&& git push*": "deny",
-      "*; git push*": "deny"
+      "*; git push*": "deny",
+      "python3 kb/tools/kb.py models*": "allow"
     },
     "edit": {
       "*": "allow",
@@ -64,5 +65,156 @@
     },
     "webfetch": "ask",
     "websearch": "ask"
+  },
+  "default_agent": "kb",
+  "agent": {
+    "kb": {
+      "mode": "primary",
+      "description": "Основной агент базы знаний: поиск, запись по «да», вопросы, коммит по «да»",
+      "model": "{env:KB_MODEL_MEDIUM}",
+      "prompt": "{file:./.opencode/prompts/kb.md}"
+    },
+    "razbor": {
+      "mode": "primary",
+      "description": "Разбор шага по критерию глубины — долгий диалог на сильной модели",
+      "model": "{env:KB_MODEL_DIALOG}",
+      "prompt": "{file:./.opencode/prompts/razbor.md}"
+    },
+    "kb-vstrecha": {
+      "mode": "subagent",
+      "description": "Расшифровка встречи → ответы на вопросы, предложения, факты. Черновик, без записи",
+      "model": "{env:KB_MODEL_HEAVY}",
+      "prompt": "{file:./.opencode/prompts/kb-vstrecha.md}",
+      "steps": 10,
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "python3 kb/tools/kb.py check*": "allow",
+          "python3 kb/tools/kb.py similar*": "allow",
+          "python3 kb/tools/kb.py step gaps*": "allow",
+          "python3 kb/tools/kb.py whoami*": "allow",
+          "python3 kb/tools/kb.py where*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "grep *": "allow",
+          "ls*": "allow"
+        },
+        "task": "deny",
+        "webfetch": "deny"
+      }
+    },
+    "kb-vstrecha-pd": {
+      "mode": "subagent",
+      "description": "То же для расшифровки с персональными данными — на внутренней модели",
+      "model": "{env:KB_MODEL_INTERNAL_THINK}",
+      "prompt": "{file:./.opencode/prompts/kb-vstrecha-pd.md}",
+      "steps": 10,
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "python3 kb/tools/kb.py check*": "allow",
+          "python3 kb/tools/kb.py similar*": "allow",
+          "python3 kb/tools/kb.py step gaps*": "allow",
+          "python3 kb/tools/kb.py whoami*": "allow",
+          "python3 kb/tools/kb.py where*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "grep *": "allow",
+          "ls*": "allow"
+        },
+        "task": "deny",
+        "webfetch": "deny"
+      }
+    },
+    "kb-peresecheniya": {
+      "mode": "subagent",
+      "description": "Похожие вход, выход и сущности у разных шагов: «один это шаг или два?»",
+      "model": "{env:KB_MODEL_HEAVY}",
+      "prompt": "{file:./.opencode/prompts/kb-peresecheniya.md}",
+      "steps": 10,
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "python3 kb/tools/kb.py check*": "allow",
+          "python3 kb/tools/kb.py similar*": "allow",
+          "python3 kb/tools/kb.py step gaps*": "allow",
+          "python3 kb/tools/kb.py whoami*": "allow",
+          "python3 kb/tools/kb.py where*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "grep *": "allow",
+          "ls*": "allow"
+        },
+        "task": "deny",
+        "webfetch": "deny"
+      }
+    },
+    "kb-sverka": {
+      "mode": "subagent",
+      "description": "Список «так ли вы работаете» по шагу для сверки с бизнесом",
+      "model": "{env:KB_MODEL_MEDIUM}",
+      "prompt": "{file:./.opencode/prompts/kb-sverka.md}",
+      "steps": 10,
+      "permission": {
+        "edit": "deny",
+        "bash": {
+          "*": "deny",
+          "python3 kb/tools/kb.py check*": "allow",
+          "python3 kb/tools/kb.py similar*": "allow",
+          "python3 kb/tools/kb.py step gaps*": "allow",
+          "python3 kb/tools/kb.py whoami*": "allow",
+          "python3 kb/tools/kb.py where*": "allow",
+          "git log*": "allow",
+          "git show*": "allow",
+          "grep *": "allow",
+          "ls*": "allow"
+        },
+        "task": "deny",
+        "webfetch": "deny"
+      }
+    },
+    "general": {
+      "disable": true
+    }
+  },
+  "command": {
+    "gde": {
+      "description": "Где я и что дальше",
+      "model": "{env:KB_MODEL_LIGHT}",
+      "template": "Вызови `python3 kb/tools/kb.py where`. Ответь тремя строками из вывода: «Ты здесь», «Дальше», «Почему». Ничего не добавляй."
+    },
+    "utro": {
+      "description": "Полный утренний отчёт",
+      "model": "{env:KB_MODEL_LIGHT}",
+      "template": "Вызови `python3 kb/tools/kb.py report morning $ARGUMENTS`. Покажи вывод целиком. Сверху — до 5 строк: что важно сегодня."
+    },
+    "kommit": {
+      "description": "Показать план коммита",
+      "model": "{env:KB_MODEL_LIGHT}",
+      "template": "Вызови `python3 kb/tools/kb.py commit plan`. Покажи вывод целиком и спроси: «Коммитим?». Без «да» не вызывай commit apply."
+    },
+    "razbor": {
+      "description": "Разбор шага: /razbor PM-XX",
+      "agent": "razbor",
+      "template": "Начни разбор шага $ARGUMENTS."
+    },
+    "vstrecha": {
+      "description": "Разобрать расшифровку встречи: /vstrecha <файл>",
+      "agent": "kb-vstrecha",
+      "template": "Разбери расшифровку $ARGUMENTS."
+    },
+    "peresecheniya": {
+      "description": "Найти пересечения шагов",
+      "agent": "kb-peresecheniya",
+      "template": "Найди пересечения шагов $ARGUMENTS."
+    },
+    "sverka": {
+      "description": "Список для сверки с бизнесом: /sverka PM-XX",
+      "agent": "kb-sverka",
+      "template": "Подготовь список «так ли вы работаете» по шагу $ARGUMENTS."
+    }
   }
 }

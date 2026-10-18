@@ -62,6 +62,23 @@
 | Думающая модель (`instructthink`) отдаёт рассуждения отдельным полем | Клиент берёт только ответ; `<think>` и `{'event': …}` вырезаются (потом, клиенты RAG) |
 | Заниженная температура | Не ставим: решение отменено |
 
+## Как задать модели на своём компьютере
+
+`opencode.json` один на всех и берёт модели из переменных окружения: `"model": "{env:KB_MODEL_HEAVY}"`.
+
+```bash
+opencode models                          # точные ID в формате provider/model-id
+export KB_MODEL_LIGHT=<ID Instruct>
+export KB_MODEL_MEDIUM=<ID GLM 4.7>
+export KB_MODEL_DIALOG=<ID GLM 5.3 flash>
+export KB_MODEL_HEAVY=<ID GLM 5.3>
+export KB_MODEL_INTERNAL=<ID Instruct>
+export KB_MODEL_INTERNAL_THINK=<ID InstructThink>
+python3 kb/tools/kb.py models            # проверка: всё ли задано
+```
+
+В песочнице `sbx` переменные надо передать внутрь — так же, как ключи моделей.
+
 ## Где задаются модели
 
 `kb/ai.json` — в каждом проекте свой. Ключей и адресов с паролями в нём нет: только имена переменных окружения.

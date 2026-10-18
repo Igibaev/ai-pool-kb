@@ -224,3 +224,86 @@ def take(root: Path, team: kbbase.Team, person: str, ident: str) -> int:
         return 1
     save(path, lines)
     return 0
+
+
+# ---------- штурман ----------
+
+NEXT = {
+    "Разбор": None,   # считается по пробелам и «достаточно»
+    "Сверка с бизнесом": ("аналитик проводит сверку шага с бизнесом; после неё — «мне достаточно» и нарезка",
+                          "бизнес подтверждает «да, мы так работаем»", "medium"),
+    "Нарезка": ("нарезать шаг на независимые декомпозиты от боли бизнеса, затем — «Приёмка»",
+                "нарезку принимает архитектор недели", "dialog"),
+    "Приёмка": ("архитектор недели принимает шаг и нарезку на встрече",
+                "без приёмки декомпозиты не идут в спеку", "light"),
+    "Декомпозиты в работе": ("спека по декомпозиту", "нет кода без принятой спеки", "heavy"),
+    "Готово": ("шаг закрыт; можно взять следующий из другой части карты", "так растёт понимание всей цепочки", "light"),
+}
+
+
+def count_gaps(root: Path, lines: list[str], body: int) -> list[str]:
+    secs = {name: (start, end) for name, start, end in kbbase.sections(lines, body)}
+    result = []
+    for label, section in DEPTH:
+        if section not in secs:
+            result.append(label)
+            continue
+        start, end = secs[section]
+        if section in ("Сущности", "Объём"):
+            if not kbbase.table_rows(lines, start, end):
+                result.append(label)
+        elif not any(kbcheck.ITEM.match(lines[i]) and "(ист:" in lines[i] for i in range(start + 1, end)):
+            result.append(label)
+    return result
+
+
+def where(root: Path, team: kbbase.Team, person: str) -> int:
+    """Ты здесь / Дальше / Почему — по каждому своему шагу. Уровень модели — из kb/ai.json."""
+    roles = team.roles.get(person, "")
+    mine, free = [], []
+    for path in sorted((root / "context" / "process").glob("PM-*.md")):
+        lines = kbbase.read_lines(path)
+        head, body = kbbase.front_matter(lines)
+        if person in (head.get("владелец"), head.get("напарник")) and head.get("статус") != "Готово":
+            mine.append((head, lines, body))
+        elif head.get("статус") == "Готов к взятию":
+            free.append(head.get("id", path.stem))
+    print(f"{person} ({roles or 'роль не указана'})")
+    for head, lines, body in mine:
+        ident, state = head.get("id"), head.get("статус", "")
+        blocks = blocking(root, ident)
+        waiting = f" · ждёт ответов: {len(blocks)} ({', '.join(blocks)})" if blocks else ""
+        print(f"Ты здесь: {ident} {head.get('шаг', '')} — «{state}»{waiting}")
+        if state == "Разбор":
+            gaps_left = count_gaps(root, lines, body)
+            enough_said = head.get("достаточно для спеки", "—") not in ("", "—")
+            if gaps_left:
+                print(f"Дальше: разобрать «{gaps_left[0]}» (пробелов по критерию глубины: {len(gaps_left)}) — /razbor {ident}")
+                print("Почему: без входа, выхода и сущностей спеку не написать · модель: dialog")
+            elif not enough_said:
+                print("Дальше: решить, хватает ли понимания: «мне достаточно» — kb step enough, или продолжить разбор")
+                print("Почему: пробелов по критерию нет, но готовность решает владелец · модель: light")
+            else:
+                print(f'Дальше: в сверку с бизнесом — kb step status {ident} "Сверка с бизнесом"')
+                print("Почему: владелец сказал «мне достаточно»; бизнес подтверждает понимание · модель: light")
+        else:
+            nxt, why, model = NEXT.get(state) or ("—", "—", "light")
+            print(f"Дальше: {nxt}")
+            print(f"Почему: {why} · модель: {model}")
+    if not mine and "разработчик" in roles or not mine and "тестировщик" in roles:
+        print(f"Ты здесь: своих шагов в работе нет")
+        print(f"Дальше: взять шаг — kb take PM-XX. Свободны: {', '.join(free) or 'нет'}")
+        print("Почему: шаги не назначают — их берут сами · модель: light")
+    if "аналитик" in roles:
+        unsorted = [h.get("id") for _, _, h, _ in kbquestions.all_questions(root)
+                    if h.get("статус") in ("открыт", "ответ найден") and kbquestions.is_new(h)]
+        print(f"Аналитику: новых вопросов без сортировки — {len(unsorted)}"
+              + (f" ({', '.join(unsorted)}) — kb q sort" if unsorted else ""))
+    if team.head.get("архитектор недели") == person:
+        waiting = []
+        for path in sorted((root / "context" / "process").glob("PM-*.md")):
+            h, _ = kbbase.front_matter(kbbase.read_lines(path))
+            if h.get("статус") == "Приёмка":
+                waiting.append(h.get("id"))
+        print(f"Архитектору недели: ждут приёмки — {', '.join(waiting) or 'нет'}")
+    return 0

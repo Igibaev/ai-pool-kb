@@ -12,9 +12,17 @@
     "dialog": "GLM 4.7"
   },
   "notes": {
-    "ids": "Здесь имена моделей. Точные ID в формате provider/model-id — из вывода `opencode models`, впишет техлид",
+    "ids": "Здесь имена моделей. Точные ID (provider/model-id из `opencode models`) — в переменных окружения из раздела env на каждом компьютере. opencode.json берёт их сам. Проверка: python3 kb/tools/kb.py models",
     "heavy": "Лимит GLM 5.3 кончается за несколько запросов. Её получают только субагенты на разовые тяжёлые задачи, с лимитом шагов",
     "internal": "Instruct и InstructThink — внутренние модели компании. Только им можно отдавать материалы с персональными данными",
     "secrets": "Ключи, токены и cookie — только в переменных окружения, здесь их нет"
+  },
+  "env": {
+    "light": "KB_MODEL_LIGHT",
+    "medium": "KB_MODEL_MEDIUM",
+    "dialog": "KB_MODEL_DIALOG",
+    "heavy": "KB_MODEL_HEAVY",
+    "internal": "KB_MODEL_INTERNAL",
+    "internal_think": "KB_MODEL_INTERNAL_THINK"
   }
 }
