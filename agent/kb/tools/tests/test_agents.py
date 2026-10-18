@@ -98,6 +98,11 @@ class Agents(unittest.TestCase):
         self.assertTrue(self.agents["general"]["disable"])
         self.assertEqual(CONFIG["default_agent"], "kb")
 
+    def test_mcp_merge_and_approve_off(self):
+        # Слить или одобрить MR через MCP GitLab — никогда: инструменты выключены по шаблону имени
+        self.assertIs(CONFIG["tools"]["*merge*"], False)
+        self.assertIs(CONFIG["tools"]["*approve*"], False)
+
 
 if __name__ == "__main__":
     unittest.main()

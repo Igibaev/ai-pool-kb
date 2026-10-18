@@ -22,6 +22,7 @@ ENGLISH_STATUS = {"confirmed": "подтверждено", "estimate": "оцен
                   "contradiction": "противоречие"}
 # Латинские буквы, похожие на кириллические
 HOMOGLYPHS = str.maketrans("aeopcxykAEOPCXYKMHTB", "аеорсхукАЕОРСХУКМНТВ")
+# Слова про ИИ вообще, а не модели команды: список одинаков во всех проектах
 NOT_SOURCES = re.compile(r"(?<![\w-])(ии|ai|агент\w*|модел\w*|нейросет\w*|glm|qwen|gpt|chatgpt|claude|"
                          r"rag|по опыту|очевидно)(?![\w-])", re.IGNORECASE)
 CJK = re.compile(r"[぀-ヿ㐀-䶿一-鿿가-힯]+")

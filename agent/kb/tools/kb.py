@@ -245,7 +245,7 @@ def cmd_models(args: list[str]) -> int:
         print(f"{key} | {names.get(key, '—')} | {env} | {value or 'НЕ ЗАДАНО'}")
     if missing:
         print(f"Не задано переменных: {missing}. Точные ID моделей — из `opencode models`, формат provider/model-id.")
-        print("Пример: export KB_MODEL_HEAVY=zai/glm-5.3")
+        print("Пример: export KB_MODEL_HEAVY=<провайдер>/<модель>")
     return 1 if missing else 0
 
 

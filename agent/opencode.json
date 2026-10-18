@@ -84,6 +84,10 @@
     "webfetch": "ask",
     "websearch": "ask"
   },
+  "tools": {
+    "*merge*": false,
+    "*approve*": false
+  },
   "default_agent": "kb",
   "agent": {
     "kb": {

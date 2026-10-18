@@ -46,15 +46,15 @@ python3 kb/tools/kb.py where
 
 ## 3. Модели
 
-Точные ID моделей посмотрите в `opencode models`. Впишите их в переменные окружения — `opencode.json` берёт модели оттуда:
+Какая модель на каком уровне, записано в `kb/ai.json` вашего проекта, показывает `python3 kb/tools/kb.py models`. Точные ID посмотрите в `opencode models` и впишите в переменные окружения — `opencode.json` берёт модели оттуда:
 
 ```bash
-export KB_MODEL_LIGHT=<ID Instruct>
-export KB_MODEL_MEDIUM=<ID GLM 4.7>
-export KB_MODEL_DIALOG=<ID GLM 5.3 flash>
-export KB_MODEL_HEAVY=<ID GLM 5.3>
-export KB_MODEL_INTERNAL=<ID Instruct>
-export KB_MODEL_INTERNAL_THINK=<ID InstructThink>
+export KB_MODEL_LIGHT=<ID модели «light» из kb/ai.json>
+export KB_MODEL_MEDIUM=<ID модели «medium» из kb/ai.json>
+export KB_MODEL_DIALOG=<ID модели «dialog» из kb/ai.json>
+export KB_MODEL_HEAVY=<ID модели «heavy» из kb/ai.json>
+export KB_MODEL_INTERNAL=<ID модели «internal» из kb/ai.json>
+export KB_MODEL_INTERNAL_THINK=<ID модели «internal_think» из kb/ai.json>
 python3 kb/tools/kb.py models          # всё ли задано
 ```
 
