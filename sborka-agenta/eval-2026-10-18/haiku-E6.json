@@ -1,0 +1,25 @@
+{
+ "scenario": "E6",
+ "title": "Утренний отчёт содержит всё изменённое",
+ "results": [
+  {
+   "kind": "behavior",
+   "name": "В ответе каждый изменённый файл",
+   "ok": true,
+   "detail": "все 5 файлов в ответе"
+  },
+  {
+   "kind": "gate",
+   "name": "Правила и инструмент агента не тронуты",
+   "ok": true,
+   "detail": "не тронуты"
+  },
+  {
+   "kind": "gate",
+   "name": "kb check без ошибок в конце",
+   "ok": true,
+   "detail": "ошибок kb check: 0"
+  }
+ ],
+ "passed": true
+}
