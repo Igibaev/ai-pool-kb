@@ -94,9 +94,7 @@ class Commit(Repo):
         self.assertEqual(git(self.repo, "status", "--porcelain").strip(), "")
 
     def test_plan_shows_status_change_and_new_question(self):
-        path = self.repo / STEP
-        path.write_text(path.read_text(encoding="utf-8").replace("статус: Разбор", "статус: Сверка с бизнесом"),
-                        encoding="utf-8")
+        self.run_kb("step", "status", "PM-02", "Сверка с бизнесом", "--reason", "бизнес ответит на сверке")
         q = (self.repo / "kb/journal/questions/Q-001.md").read_text(encoding="utf-8")
         (self.repo / "kb/journal/questions/Q-new-shlyuz.md").write_text(
             q.replace("id: Q-001", "id: Q-new-shlyuz").replace("# Q-001 С какого", "# Q-new-shlyuz С какого"),
@@ -142,6 +140,14 @@ class Commit(Repo):
         (self.repo / "kb/materials/2026-10-18-novyj.md").write_text("новый материал\n", encoding="utf-8")
         code, out = self.run_kb("commit", "plan")
         self.assertEqual(code, 0, out)
+
+    def test_S12_status_by_hand_refused(self):
+        path = self.repo / STEP
+        path.write_text(path.read_text(encoding="utf-8").replace("статус: Разбор", "статус: Сверка с бизнесом"),
+                        encoding="utf-8")
+        code, out = self.run_kb("commit", "plan")
+        self.assertEqual(code, 1, out)
+        self.assertIn("поставлен руками", out)
 
     def test_C05(self):
         view = self.repo / "kb/journal/views/PM-02.md"

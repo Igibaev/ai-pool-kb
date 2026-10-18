@@ -94,6 +94,13 @@ def check_step(rep: Report, team: kbbase.Team, path: Path) -> None:
     status = head.get("статус", "")
     if status and status not in kbbase.STEP_STATUSES:
         rep.add(path, 0, Problem("ОШИБКА", f"Неизвестный статус «{status}». Статусы: {', '.join(kbbase.STEP_STATUSES)}"))
+    moves = re.findall(r"^- \d{4}-\d{2}-\d{2} .*?→ (.+?) — ", "\n".join(lines), re.M)
+    if status and moves and moves[-1].strip() != status:
+        rep.add(path, 0, Problem("ОШИБКА", f"Статус «{status}» поставлен руками: в «Истории статуса» последний переход — "
+                                           f"в «{moves[-1].strip()}». Статус меняют командой kb step status или kb take"))
+    elif status and not moves and status not in ("Черновик", "Готов к взятию"):
+        rep.add(path, 0, Problem("ОШИБКА", f"Статус «{status}» без записи в «Истории статуса». "
+                                           "Статус меняют командой kb step status или kb take"))
     enough = head.get("достаточно для спеки", "—")
     if enough != "—" and not re.match(r"^.+, \d{4}-\d{2}-\d{2}$", enough):
         rep.add(path, 0, Problem("ОШИБКА", "Поле «достаточно для спеки» — «—» или «<имя>, <ГГГГ-ММ-ДД>». "
