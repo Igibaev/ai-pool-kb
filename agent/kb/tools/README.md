@@ -18,6 +18,7 @@ python3 kb/tools/kb.py step gaps PM-XX             чего не хватает 
 python3 kb/tools/kb.py step enough PM-XX           «мне достаточно» — только владелец
 python3 kb/tools/kb.py step status PM-XX "<статус>" [--reason "…"]
 python3 kb/tools/kb.py take PM-XX                  взять шаг; лимит — в team.md
+python3 kb/tools/kb.py report morning [--since <дата|хеш>] [--save]   полный утренний отчёт по git
 ```
 
 `fact` поправляет близкие формы ввода и пишет «ПОПРАВЛЕНО: …». Ошибка — «НЕ ЗАПИСАНО», файл не меняется.
@@ -32,6 +33,7 @@ tools/
   kbgit.py           kb commit plan / apply, pre-commit
   kbquestions.py     вопросы: ask send, similar, q sort/answer/close/out, списки views
   kbsteps.py         шаг: step gaps/enough/status, take
+  kbreport.py        утренний отчёт
   hooks/pre-commit   проверка перед любым коммитом: материалы, .kb/, сгенерированное, kb check
   tests/
     oshibki.md       что инструмент обязан отклонить — каждая строка = тест с тем же номером
@@ -39,6 +41,7 @@ tools/
     test_commit.py   коммит, хук, права opencode.json
     test_questions.py вопросы и списки
     test_steps.py    разбор, «достаточно», статусы, взятие
+    test_report.py   отчёт: каждый изменённый файл в отчёте
                      все тесты: python3 -m unittest discover -s kb/tools/tests -v
     fixture/         маленькая база (выдуманный продукт) — данные для тестов
   eval/              стенд проверки агента на живой модели (порция 8)

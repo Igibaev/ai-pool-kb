@@ -17,7 +17,7 @@ import kbcheck
 import kbquestions
 
 FACT_LINE = re.compile(r"^(?:-|\d+\.)\s+.*\(ист:")
-GENERATED = ("journal/reports/", "context/process/_deps.md")     # строителей пока нет — не трогать
+GENERATED = ("context/process/_deps.md",)     # строителя пока нет — не трогать
 VIEWS = "journal/views/"
 JUNK = re.compile(r"(^|/)(__pycache__/|\.DS_Store$)|\.pyc$")
 

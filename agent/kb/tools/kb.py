@@ -19,6 +19,7 @@
     python3 kb/tools/kb.py step enough PM-XX  «мне достаточно, чтобы писать спецификацию» — только владелец
     python3 kb/tools/kb.py step status PM-XX "<статус>" [--reason "…"]
     python3 kb/tools/kb.py take PM-XX         взять шаг
+    python3 kb/tools/kb.py report morning [--since <ГГГГ-ММ-ДД|хеш>] [--save]   полный утренний отчёт
 """
 from __future__ import annotations
 
@@ -34,6 +35,7 @@ import kbfacts  # noqa: E402
 import kbgit  # noqa: E402
 import kbquestions  # noqa: E402
 import kbsteps  # noqa: E402
+import kbreport  # noqa: E402
 
 # «Ответ» вопроса пишет `kb q answer` (порция 4): у него служебные строки «Закрыл», «Записан в»
 FACT_SECTIONS = {"PM": kbcheck.STEP_FACTS, "Q": {"Что уже знаем"}}
@@ -204,6 +206,20 @@ def cmd_take(args: list[str]) -> int:
     return 1 if person is None else kbsteps.take(root, team, person, args[0])
 
 
+def cmd_report(args: list[str]) -> int:
+    if args[:1] != ["morning"]:
+        print("ОШИБКА: нужно `kb report morning [--since <дата|хеш>] [--save]`")
+        return 1
+    since = None
+    if "--since" in args:
+        i = args.index("--since")
+        if i + 1 >= len(args):
+            print("ОШИБКА: после --since нужна дата ГГГГ-ММ-ДД или хеш коммита")
+            return 1
+        since = args[i + 1]
+    return kbreport.morning(kbbase.kb_root(), since, "--save" in args)
+
+
 def cmd_views(args: list[str]) -> int:
     changed = kbquestions.write_views(kbbase.kb_root())
     print(f"Списки пересобраны: {', '.join(changed)}" if changed else "Списки не изменились")
@@ -240,7 +256,8 @@ def cmd_hooks(args: list[str]) -> int:
 
 COMMANDS = {"check": cmd_check, "fact": cmd_fact, "whoami": cmd_whoami, "commit": cmd_commit,
             "precommit": cmd_precommit, "hooks": cmd_hooks, "similar": cmd_similar, "ask": cmd_ask,
-            "q": cmd_q, "views": cmd_views, "step": cmd_step, "take": cmd_take}
+            "q": cmd_q, "views": cmd_views, "step": cmd_step, "take": cmd_take,
+            "report": cmd_report}
 
 
 def main(argv: list[str]) -> int:
