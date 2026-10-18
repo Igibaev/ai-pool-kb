@@ -69,8 +69,13 @@ class CodeKit(DeliveryHelpers, Base):
         code, out = self.kbx("similar", "первое уведомление должнику")
         self.assertEqual(code, 0, out)
         self.assertIn("PM-02", out)
-        code, out = self.kbx("fact", "PM-02", "Вход", "x")
-        self.assertEqual(code, 1)
+        step = next((self.root / "context/process").glob("PM-02-*.md"))
+        before = step.read_text(encoding="utf-8")
+        code, out = self.kbx("fact", "PM-02", "Состояния", "Факт из папки кода",
+                             "со слов Разработчик-1, 2026-10-18", "подтверждено")
+        self.assertEqual(code, 1, out)
+        self.assertIn("команды чтения базы", out)
+        self.assertEqual(step.read_text(encoding="utf-8"), before)
 
     def test_X03_ci_fails_on_kb_folder(self):
         self.run_kb("code-kit", str(self.code))
