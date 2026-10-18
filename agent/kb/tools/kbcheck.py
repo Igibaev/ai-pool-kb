@@ -175,6 +175,9 @@ def run(root: Path) -> Report:
         check_step(rep, team, path)
     for path in sorted((journal / "questions").glob("Q-*.md")):
         check_question(rep, team, path)
+    for path in sorted((journal / "questions").glob("*/**/Q-*.md")):
+        rep.add(path, 0, Problem("ОШИБКА", "Вопросы лежат в `journal/questions/` плоско. "
+                                            "Меняется статус, файл не двигается"))
     for path in sorted((journal / "decisions").glob("D-*.md")):
         check_body_facts(rep, team, path)
     for path in sorted((process / "notes").glob("PM-*/*.md")):

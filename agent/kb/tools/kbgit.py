@@ -14,9 +14,11 @@ from pathlib import Path
 
 import kbbase
 import kbcheck
+import kbquestions
 
 FACT_LINE = re.compile(r"^(?:-|\d+\.)\s+.*\(ист:")
-GENERATED = ("journal/views/", "journal/reports/", "context/process/_deps.md")
+GENERATED = ("journal/reports/", "context/process/_deps.md")     # строителей пока нет — не трогать
+VIEWS = "journal/views/"
 JUNK = re.compile(r"(^|/)(__pycache__/|\.DS_Store$)|\.pyc$")
 
 
@@ -67,17 +69,24 @@ def kb_path(repo: Path, kb: Path, path: str) -> str:
         return path
 
 
-def forbidden(repo: Path, kb: Path, files: list[tuple[str, str]], allow_generated: bool = False) -> list[str]:
+def forbidden(repo: Path, kb: Path, files: list[tuple[str, str]]) -> list[str]:
     """Что нельзя коммитить никогда: правка материалов, личное из .kb/, ручная правка сгенерированного."""
     problems = []
+    views = None
     for code, path in files:
         inner = kb_path(repo, kb, path)
         if path.startswith(".kb/") or "/.kb/" in path:
             problems.append(f"Личные файлы в git не попадают: `{path}`")
         elif inner.startswith("materials/") and code not in ("?", "??", "A"):
             problems.append(f"Материалы не правятся: `{inner}`. Новая версия — новый файл с датой")
-        elif inner.startswith(GENERATED) and not allow_generated:
-            problems.append(f"Списки строит инструмент: `{inner}`. Руками не правят")
+        elif inner.startswith(VIEWS):
+            views = views if views is not None else kbquestions.render_views(kb)
+            name = inner[len(VIEWS):]
+            full = repo / path
+            if full.exists() and views.get(name) != full.read_text(encoding="utf-8"):
+                problems.append(f"Списки строит инструмент: `{inner}`. Руками не правят — пересоберите: kb views")
+        elif inner.startswith(GENERATED):
+            problems.append(f"Этот файл строит инструмент: `{inner}`. Руками не правят")
     return problems
 
 
@@ -161,6 +170,9 @@ def plans_dir(repo: Path) -> Path:
 
 def plan(kb: Path, only: list[str], message: str | None, person: str) -> int:
     repo = repo_root(kb)
+    rebuilt = kbquestions.write_views(kb)
+    if rebuilt:
+        print(f"Списки вопросов пересобраны: {', '.join(rebuilt)}")
     files = changed_files(repo, kb)
     if only:
         wanted = {str((Path.cwd() / p).resolve()) for p in only}

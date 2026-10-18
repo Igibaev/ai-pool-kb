@@ -144,12 +144,20 @@ class Commit(Repo):
         self.assertEqual(code, 0, out)
 
     def test_C05(self):
-        views = self.repo / "kb/journal/views"
-        views.mkdir(parents=True)
-        (views / "PM-02.md").write_text("руками\n", encoding="utf-8")
-        code, out = self.run_kb("commit", "plan")
-        self.assertEqual(code, 1, out)
+        view = self.repo / "kb/journal/views/PM-02.md"
+        view.write_text(view.read_text(encoding="utf-8") + "дописано руками\n", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        out = git(self.repo, "commit", "-m", "правка списка руками")
         self.assertIn("Списки строит инструмент", out)
+        self.assertEqual(self.commits(), 1)
+
+    def test_C05_plan_rebuilds_views(self):
+        view = self.repo / "kb/journal/views/PM-02.md"
+        view.write_text(view.read_text(encoding="utf-8") + "дописано руками\n", encoding="utf-8")
+        code, out = self.run_kb("commit", "plan")
+        self.assertIn("Списки вопросов пересобраны: PM-02.md", out)
+        self.assertNotIn("дописано руками", view.read_text(encoding="utf-8"))
+        self.assertIn("Нечего коммитить", out)
 
     def test_plan_refused_on_check_errors(self):
         path = self.repo / STEP
@@ -234,6 +242,10 @@ class OpenCodePermissions(unittest.TestCase):
         self.assertEqual(self.bash("python3 kb/tools/kb.py commit apply 1a2b3c"), "ask")
         self.assertEqual(self.bash("python3 kb/tools/kb.py ask send q-porog"), "ask")
         self.assertEqual(self.bash("python3 kb/tools/kb.py step enough PM-02"), "ask")
+        for cmd in ("q sort Q-001 кто=бизнес", "q close Q-001", "q out Q-001 причина"):
+            self.assertEqual(self.bash(f"python3 kb/tools/kb.py {cmd}"), "ask", cmd)
+        for cmd in ("similar долг", "q answer Q-001 x y оценка", "views"):
+            self.assertEqual(self.bash(f"python3 kb/tools/kb.py {cmd}"), "allow", cmd)
 
     def test_reading_commands_allowed(self):
         for cmd in ("python3 kb/tools/kb.py check", "python3 kb/tools/kb.py commit plan",

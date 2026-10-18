@@ -8,6 +8,13 @@
     python3 kb/tools/kb.py commit plan [файлы] [-m "сообщение"]
     python3 kb/tools/kb.py commit apply <id>
     python3 kb/tools/kb.py hooks              подключить проверку перед коммитом
+    python3 kb/tools/kb.py similar "<формулировка>"      похожие вопросы и факты — до того, как предлагать вопрос
+    python3 kb/tools/kb.py ask send <slug> шаг=PM-02 кто=бизнес MVP=да блокирует=да откуда="…" вопрос="…" [контекст="…"]
+    python3 kb/tools/kb.py q sort Q-… кто=<бизнес|смежник|команда|аналитик|сами>      (аналитик)
+    python3 kb/tools/kb.py q answer Q-… "<ответ>" "<источник>" <статус> [записан=PM-02#Вход]
+    python3 kb/tools/kb.py q close Q-…        (автор вопроса)
+    python3 kb/tools/kb.py q out Q-… Q-… "<причина>"     (аналитик)
+    python3 kb/tools/kb.py views              пересобрать списки вопросов
 """
 from __future__ import annotations
 
@@ -21,6 +28,7 @@ import kbbase  # noqa: E402
 import kbcheck  # noqa: E402
 import kbfacts  # noqa: E402
 import kbgit  # noqa: E402
+import kbquestions  # noqa: E402
 
 # «Ответ» вопроса пишет `kb q answer` (порция 4): у него служебные строки «Закрыл», «Записан в»
 FACT_SECTIONS = {"PM": kbcheck.STEP_FACTS, "Q": {"Что уже знаем"}}
@@ -103,6 +111,63 @@ def cmd_whoami(args: list[str]) -> int:
     return 0
 
 
+def current_person(team: kbbase.Team) -> str | None:
+    person = team.by_git(git_config("user.email"), git_config("user.name"))
+    if person is None:
+        print("ОШИБКА: вас нет в `team.md`. Проверьте: python3 kb/tools/kb.py whoami")
+    return person
+
+
+def cmd_similar(args: list[str]) -> int:
+    if not args:
+        print('ОШИБКА: нужно `kb similar "<формулировка>"`')
+        return 1
+    found = kbquestions.similar(kbbase.kb_root(), " ".join(args))
+    if not found:
+        print("Похожего нет")
+    for score, ident, what in found:
+        print(f"{ident} ({score:.0%}): {what}")
+    print("Совпадение слов — только кандидат. Дубль ли это, решает человек.")
+    return 0
+
+
+def cmd_ask(args: list[str]) -> int:
+    if len(args) < 2 or args[0] != "send":
+        print("ОШИБКА: нужно `kb ask send <slug> шаг=… кто=… откуда=… вопрос=\"…\"`")
+        return 1
+    root = kbbase.kb_root()
+    team = kbbase.Team(root)
+    person = current_person(team)
+    if person is None:
+        return 1
+    return kbquestions.ask_send(root, team, person, args[1], args[2:])
+
+
+def cmd_q(args: list[str]) -> int:
+    root = kbbase.kb_root()
+    team = kbbase.Team(root)
+    sub = args[0] if args else ""
+    if sub == "answer" and len(args) >= 3:
+        return kbquestions.answer(root, team, args[1], args[2:])
+    if sub in ("sort", "close", "out") and len(args) >= 2:
+        person = current_person(team)
+        if person is None:
+            return 1
+        if sub == "sort":
+            return kbquestions.sort(root, team, person, args[1], args[2:])
+        if sub == "close":
+            return kbquestions.close(root, person, args[1])
+        return kbquestions.out(root, team, person, args[1:])
+    print("ОШИБКА: нужно `kb q sort|answer|close|out …` — подробно: python3 kb/tools/kb.py --help")
+    return 1
+
+
+def cmd_views(args: list[str]) -> int:
+    changed = kbquestions.write_views(kbbase.kb_root())
+    print(f"Списки пересобраны: {', '.join(changed)}" if changed else "Списки не изменились")
+    return 0
+
+
 def cmd_commit(args: list[str]) -> int:
     root = kbbase.kb_root()
     if args[:1] == ["plan"]:
@@ -113,10 +178,8 @@ def cmd_commit(args: list[str]) -> int:
                 print('ОШИБКА: после -m нужно сообщение: -m "текст"')
                 return 1
             message, rest = rest[i + 1], rest[:i] + rest[i + 2:]
-        team = kbbase.Team(root)
-        person = team.by_git(git_config("user.email"), git_config("user.name"))
+        person = current_person(kbbase.Team(root))
         if person is None:
-            print("ОШИБКА: вас нет в `team.md` — не знаю, кто решил. Проверьте: python3 kb/tools/kb.py whoami")
             return 1
         return kbgit.plan(root, rest, message, person)
     if args[:1] == ["apply"] and len(args) == 2:
@@ -134,7 +197,8 @@ def cmd_hooks(args: list[str]) -> int:
 
 
 COMMANDS = {"check": cmd_check, "fact": cmd_fact, "whoami": cmd_whoami, "commit": cmd_commit,
-            "precommit": cmd_precommit, "hooks": cmd_hooks}
+            "precommit": cmd_precommit, "hooks": cmd_hooks, "similar": cmd_similar, "ask": cmd_ask,
+            "q": cmd_q, "views": cmd_views}
 
 
 def main(argv: list[str]) -> int:
