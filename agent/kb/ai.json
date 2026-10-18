@@ -1,9 +1,17 @@
 {
   "models": {
-    "light": "",
-    "medium": "",
-    "heavy": "",
-    "internal": ""
+    "light": "Instruct",
+    "medium": "GLM 5.3 flash",
+    "heavy": "GLM 5.3",
+    "internal": "Instruct",
+    "internal_think": "InstructThink"
   },
-  "secrets_from_env": "Ключи, токены и cookie — только в переменных окружения, здесь их нет"
+  "fallback": {
+    "medium": "GLM 4.7"
+  },
+  "notes": {
+    "ids": "Здесь имена моделей. Точные ID в формате provider/model-id — из вывода `opencode models`, впишет техлид",
+    "internal": "Instruct и InstructThink — внутренние модели компании. Только им можно отдавать материалы с персональными данными",
+    "secrets": "Ключи, токены и cookie — только в переменных окружения, здесь их нет"
+  }
 }
