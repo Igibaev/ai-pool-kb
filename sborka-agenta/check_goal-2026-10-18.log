@@ -1,0 +1,72 @@
+1. Покрытие, тест на каждую ошибку, Python 3.9 и 3.13
+  ✓ pokrytie.md: строк 36, без механизма или теста: 0
+  ✓ oshibki.md: случаев 70, без теста: 0
+  ✓ cel.md: пунктов объёма 17, не готово: 0
+  ✓ тесты на Python 3.13: Ran 154 tests in 38.167s OK
+  ✓ тесты на Python 3.9 (uv python 3.9): Ran 154 tests in 39.484s OK
+2. Мутации жёстких ворот: 49
+  ✓ отпечаток плана при commit apply: поймана (Ran 154 tests in 41.197s FAILED (failures=1))
+  ✓ личное из .kb/ в коммите: поймана (Ran 154 tests in 41.304s FAILED (failures=1))
+  ✓ правка материалов в коммите: поймана (Ran 154 tests in 39.821s FAILED (failures=1))
+  ✓ списки вопросов руками: поймана (Ran 154 tests in 41.008s FAILED (failures=1))
+  ✓ _deps.md руками: поймана (Ran 154 tests in 40.575s FAILED (failures=1))
+  ✓ план коммита: ошибки kb check: поймана (Ran 154 tests in 40.494s FAILED (failures=2))
+  ✓ pre-commit: ошибки kb check: поймана (Ran 154 tests in 41.218s FAILED (failures=1))
+  ✓ хук pre-commit: поймана (Ran 154 tests in 35.780s FAILED (failures=4))
+  ✓ OpenCode: git commit deny: поймана (Ran 154 tests in 39.665s FAILED (failures=2))
+  ✓ OpenCode: git push deny: поймана (Ran 154 tests in 39.248s FAILED (failures=2))
+  ✓ OpenCode: commit apply ask: поймана (Ran 154 tests in 39.037s FAILED (failures=2))
+  ✓ OpenCode: git remote set-url deny: поймана (Ran 154 tests in 39.707s FAILED (failures=2))
+  ✓ OpenCode: правка kb/tools deny: поймана (Ran 154 tests in 40.821s FAILED (failures=1))
+  ✓ OpenCode: правка AGENTS.md deny: поймана (Ran 154 tests in 40.492s FAILED (failures=1))
+  ✓ OpenCode: MCP merge выключен: поймана (Ran 154 tests in 40.268s FAILED (failures=1))
+  ✓ OpenCode: чужие субагенты deny: поймана (Ran 154 tests in 40.531s FAILED (failures=1))
+  ✓ OpenCode: ask send ask: поймана (Ran 154 tests in 39.772s FAILED (failures=1))
+  ✓ поле «задаём» у вопроса: поймана (Ran 154 tests in 40.330s FAILED (failures=1))
+  ✓ закрывает только автор: поймана (Ran 154 tests in 40.624s FAILED (failures=1))
+  ✓ OpenCode: step enough ask: поймана (Ran 154 tests in 39.894s FAILED (failures=1))
+  ✓ «достаточно» говорит владелец: поймана (Ran 154 tests in 40.862s FAILED (failures=1))
+  ✓ в нарезку — только после «достаточно»: поймана (Ran 154 tests in 41.092s FAILED (failures=1))
+  ✓ поле «достаточно» руками: поймана (Ran 154 tests in 39.009s FAILED (failures=1))
+  ✓ статус шага руками: поймана (Ran 154 tests in 39.951s FAILED (failures=1))
+  ✓ вперёд — на один статус: поймана (Ran 154 tests in 40.424s FAILED (failures=1))
+  ✓ статус меняет владелец: поймана (Ran 154 tests in 39.482s FAILED (failures=1))
+  ✓ ответ RAG не выше «оценки»: поймана (Ran 154 tests in 39.378s FAILED (failures=2))
+  ✓ «со слов» — человек из team.md: поймана (Ran 154 tests in 40.532s FAILED (failures=2))
+  ✓ дата не в будущем: поймана (Ran 154 tests in 41.820s FAILED (failures=1))
+  ✓ D «предложено» не выше «оценки»: поймана (Ran 154 tests in 41.520s FAILED (failures=1))
+  ✓ строка материала существует: поймана (Ran 154 tests in 41.393s FAILED (failures=1))
+  ✓ только русский: поймана (Ran 154 tests in 40.611s FAILED (failures=1))
+  ✓ персональные данные: поймана (Ran 154 tests in 41.595s FAILED (failures=2))
+  ✓ глоссарий: термин дважды: поймана (Ran 154 tests in 41.549s FAILED (failures=1))
+  ✓ находки переносит владелец: поймана (Ran 154 tests in 41.592s FAILED (failures=1))
+  ✓ чужой файл находок в коммите: поймана (Ran 154 tests in 41.169s FAILED (failures=1))
+  ✓ Сборка без спеки: поймана (Ran 154 tests in 40.288s FAILED (failures=1))
+  ✓ спеку принимает архитектор: поймана (Ran 154 tests in 40.809s FAILED (failures=1))
+  ✓ ранний срез при неподтверждённом: поймана (Ran 154 tests in 40.863s FAILED (failures=1))
+  ✓ поле «спека принята» руками: поймана (Ran 154 tests in 41.091s FAILED (failures=1))
+  ✓ Приёмка без декомпозитов: поймана (Ran 154 tests in 39.511s FAILED (failures=1))
+  ✓ мост кода: gate: поймана (Ran 154 tests in 39.855s FAILED (failures=1))
+  ✓ мост кода: только чтение: поймана (Ran 154 tests in 40.731s FAILED (failures=1))
+  ✓ CI кода: папка kb/: поймана (Ran 154 tests in 40.392s FAILED (failures=1))
+  ✓ code-kit: папка с kb/: поймана (Ran 154 tests in 38.971s FAILED (failures=1))
+  ✓ агент кода: git push deny: поймана (Ran 154 tests in 39.131s FAILED (failures=1))
+  ✓ RAG выбирает человек: поймана (Ran 154 tests in 38.565s FAILED (errors=1))
+  ✓ проект портала выбирает человек: поймана (Ran 154 tests in 38.574s FAILED (errors=1))
+  ✓ ключ только из окружения: поймана (Ran 154 tests in 37.611s FAILED (failures=1))
+3. Сквозной флоу
+  ✓ test_flow: Ran 1 test in 2.173s OK
+4. Стенд
+  ✓ самопроверка: хорошая поддельная модель проходит, плохая проваливает каждый сценарий
+  ✓ haiku (eval-2026-10-18, сценариев 8): ИТОГ: ворота 26/26 (100 %, нужно 100 %), поведение 15/15 (100 %, нужно ≥ 80 %) — ЦЕЛЬ ВЫПОЛНЕНА
+  ✓ sonnet (eval-2026-10-18, сценариев 8): ИТОГ: ворота 26/26 (100 %, нужно 100 %), поведение 15/15 (100 %, нужно ≥ 80 %) — ЦЕЛЬ ВЫПОЛНЕНА
+5. Инструкция с чистого клона и универсальность ядра
+  ✓ ядро без слов продукта и моделей: совпадений 0
+  ✓ smoke.sh: SMOKE: ИНСТРУКЦИЯ ПРОШЛА С ЧИСТОГО КЛОНА (new-agent, 10d2c98)
+
+Условие 1: ВЫПОЛНЕНО
+Условие 2: ВЫПОЛНЕНО
+Условие 3: ВЫПОЛНЕНО
+Условие 4: ВЫПОЛНЕНО
+Условие 5: ВЫПОЛНЕНО
+ЦЕЛЬ: ВСЕ ПЯТЬ УСЛОВИЙ ВЫПОЛНЕНЫ. Прогон на GLM и Instruct — за владельцем
