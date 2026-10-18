@@ -31,6 +31,9 @@
     python3 kb/tools/kb.py spec early PM-XX-NN --reason "…"             ранний срез: код до принятой спеки
     python3 kb/tools/kb.py package "<роль бизнеса>|всем"               пакет вопросов для бизнеса
     python3 kb/tools/kb.py package load <файл пакета>                  загрузить ответы из пакета
+    python3 kb/tools/kb.py code-kit <папка кода>                       .kb-path, kbx.py, CI и правила для репозитория кода
+    python3 kb/tools/kb.py rag openwebui --rag <RAG> --vopros "…" [--save <slug>]
+    python3 kb/tools/kb.py rag portal --proekt <проект> --vopros "…" [--chat <id>] [--save <slug>]
 """
 from __future__ import annotations
 
@@ -51,6 +54,8 @@ import kbnotes  # noqa: E402
 import kbdeps  # noqa: E402
 import kbdelivery  # noqa: E402
 import kbpackage  # noqa: E402
+import kbcodekit  # noqa: E402
+import kbrag  # noqa: E402
 
 # «Ответ» вопроса пишет `kb q answer` (порция 4): у него служебные строки «Закрыл», «Записан в»
 FACT_SECTIONS = {"PM": kbcheck.STEP_FACTS, "Q": {"Что уже знаем"}}
@@ -318,6 +323,17 @@ def cmd_package(args: list[str]) -> int:
     return 1
 
 
+def cmd_code_kit(args: list[str]) -> int:
+    if len(args) != 1:
+        print("ОШИБКА: нужно `kb code-kit <папка кода>`")
+        return 1
+    return kbcodekit.install(kbbase.kb_root(), args[0])
+
+
+def cmd_rag(args: list[str]) -> int:
+    return kbrag.run(kbbase.kb_root(), args)
+
+
 def cmd_views(args: list[str]) -> int:
     changed = kbquestions.write_views(kbbase.kb_root())
     print(f"Списки пересобраны: {', '.join(changed)}" if changed else "Списки не изменились")
@@ -356,7 +372,8 @@ COMMANDS = {"check": cmd_check, "fact": cmd_fact, "whoami": cmd_whoami, "commit"
             "precommit": cmd_precommit, "hooks": cmd_hooks, "similar": cmd_similar, "ask": cmd_ask,
             "q": cmd_q, "views": cmd_views, "step": cmd_step, "take": cmd_take,
             "report": cmd_report, "where": cmd_where, "models": cmd_models,
-            "notes": cmd_notes, "deps": cmd_deps, "dec": cmd_dec, "spec": cmd_spec, "package": cmd_package}
+            "notes": cmd_notes, "deps": cmd_deps, "dec": cmd_dec, "spec": cmd_spec, "package": cmd_package,
+            "code-kit": cmd_code_kit, "rag": cmd_rag}
 
 
 def main(argv: list[str]) -> int:

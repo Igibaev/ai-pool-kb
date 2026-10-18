@@ -26,6 +26,8 @@ python3 kb/tools/kb.py deps                        связи шагов для 
 python3 kb/tools/kb.py dec new|status …            декомпозиты в delivery/
 python3 kb/tools/kb.py spec set|accept|early …     спека; нет кода без принятой спеки; ранний срез
 python3 kb/tools/kb.py package "<роль>"|всем       пакет вопросов для бизнеса; package load <файл> — ответы обратно
+python3 kb/tools/kb.py code-kit <папка кода>        набор для репозитория кода: .kb-path, kbx.py, CI, правила
+python3 kb/tools/kb.py rag openwebui|portal …      спросить RAG компании; RAG и проект выбирает человек
 ```
 
 `fact` поправляет близкие формы ввода и пишет «ПОПРАВЛЕНО: …». Ошибка — «НЕ ЗАПИСАНО», файл не меняется.
@@ -46,6 +48,9 @@ tools/
   kbglossary.py      глоссарий: синонимы, дубли терминов
   kbdelivery.py      декомпозиты и спека
   kbpackage.py       пакет вопросов для бизнеса
+  kbcodekit.py       набор для репозитория кода
+  kbrag.py           клиенты Open WebUI и портала документации
+  code-kit/          kbx.py (мост к базе, ворота спеки), ci-no-kb.sh, AGENTS.md агента кода
   hooks/pre-commit   проверка перед любым коммитом: материалы, .kb/, сгенерированное, kb check
   tests/
     oshibki.md       что инструмент обязан отклонить — каждая строка = тест с тем же номером
@@ -57,6 +62,7 @@ tools/
     test_agents.py   штурман и агенты opencode.json
     test_extra.py    ПД, находки, связи шагов, глоссарий
     test_delivery.py декомпозиты, спека, пакет
+    test_code_rag.py набор для кода, клиенты RAG на поддельных серверах
                      все тесты: python3 -m unittest discover -s kb/tools/tests -v
     fixture/         маленькая база (выдуманный продукт) — данные для тестов
   eval/              стенд проверки агента на живой модели (порция 8)

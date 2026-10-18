@@ -12,7 +12,7 @@ from test_steps import Base  # noqa: E402
 STEP = "context/process/PM-02-pervoe-uvedomlenie.md"
 
 
-class Delivery(Base):
+class DeliveryHelpers:
     def to_slicing(self):
         self.close_q001()
         self.run_kb("step", "enough", "PM-02")
@@ -25,6 +25,8 @@ class Delivery(Base):
         self.assertEqual(code, 0, out)
         return "PM-02-01"
 
+
+class Delivery(DeliveryHelpers, Base):
     def test_slice_and_spec_flow(self):
         self.to_slicing()
         ident = self.new_dec()
