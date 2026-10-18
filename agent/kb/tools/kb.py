@@ -5,6 +5,9 @@
     python3 kb/tools/kb.py fact <ID> "<Раздел>" "<текст>" "<источник>" <статус>
     python3 kb/tools/kb.py fact <ID> "<Раздел>" "- <текст> (ист: <источник>; <статус>)"
     python3 kb/tools/kb.py whoami
+    python3 kb/tools/kb.py commit plan [файлы] [-m "сообщение"]
+    python3 kb/tools/kb.py commit apply <id>
+    python3 kb/tools/kb.py hooks              подключить проверку перед коммитом
 """
 from __future__ import annotations
 
@@ -17,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import kbbase  # noqa: E402
 import kbcheck  # noqa: E402
 import kbfacts  # noqa: E402
+import kbgit  # noqa: E402
 
 # «Ответ» вопроса пишет `kb q answer` (порция 4): у него служебные строки «Закрыл», «Записан в»
 FACT_SECTIONS = {"PM": kbcheck.STEP_FACTS, "Q": {"Что уже знаем"}}
@@ -99,7 +103,38 @@ def cmd_whoami(args: list[str]) -> int:
     return 0
 
 
-COMMANDS = {"check": cmd_check, "fact": cmd_fact, "whoami": cmd_whoami}
+def cmd_commit(args: list[str]) -> int:
+    root = kbbase.kb_root()
+    if args[:1] == ["plan"]:
+        rest, message = args[1:], None
+        if "-m" in rest:
+            i = rest.index("-m")
+            if i + 1 >= len(rest):
+                print('ОШИБКА: после -m нужно сообщение: -m "текст"')
+                return 1
+            message, rest = rest[i + 1], rest[:i] + rest[i + 2:]
+        team = kbbase.Team(root)
+        person = team.by_git(git_config("user.email"), git_config("user.name"))
+        if person is None:
+            print("ОШИБКА: вас нет в `team.md` — не знаю, кто решил. Проверьте: python3 kb/tools/kb.py whoami")
+            return 1
+        return kbgit.plan(root, rest, message, person)
+    if args[:1] == ["apply"] and len(args) == 2:
+        return kbgit.apply(root, args[1])
+    print("ОШИБКА: нужно `kb commit plan` или `kb commit apply <id>`")
+    return 1
+
+
+def cmd_precommit(args: list[str]) -> int:
+    return kbgit.precommit(kbbase.kb_root())
+
+
+def cmd_hooks(args: list[str]) -> int:
+    return kbgit.install_hooks(kbbase.kb_root())
+
+
+COMMANDS = {"check": cmd_check, "fact": cmd_fact, "whoami": cmd_whoami, "commit": cmd_commit,
+            "precommit": cmd_precommit, "hooks": cmd_hooks}
 
 
 def main(argv: list[str]) -> int:

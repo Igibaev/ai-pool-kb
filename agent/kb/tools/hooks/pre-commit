@@ -1,0 +1,3 @@
+#!/bin/sh
+# kb: проверка перед любым коммитом — агента и человека. Подключение: python3 kb/tools/kb.py hooks
+exec python3 "$(dirname "$0")/../kb.py" precommit
