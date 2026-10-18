@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Инструмент базы знаний. Ворота флоу держит он, а не промпт.
+
+    python3 kb/tools/kb.py check
+    python3 kb/tools/kb.py fact <ID> "<Раздел>" "<текст>" "<источник>" <статус>
+    python3 kb/tools/kb.py fact <ID> "<Раздел>" "- <текст> (ист: <источник>; <статус>)"
+    python3 kb/tools/kb.py whoami
+"""
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import kbbase  # noqa: E402
+import kbcheck  # noqa: E402
+import kbfacts  # noqa: E402
+
+# «Ответ» вопроса пишет `kb q answer` (порция 4): у него служебные строки «Закрыл», «Записан в»
+FACT_SECTIONS = {"PM": kbcheck.STEP_FACTS, "Q": {"Что уже знаем"}}
+
+
+def cmd_check(args: list[str]) -> int:
+    rep = kbcheck.run(kbbase.kb_root())
+    rep.print()
+    return 1 if rep.errors() else 0
+
+
+def cmd_fact(args: list[str]) -> int:
+    if len(args) not in (3, 5):
+        print('ОШИБКА: нужно `kb fact <ID> "<Раздел>" "<текст>" "<источник>" <статус>` '
+              'или `kb fact <ID> "<Раздел>" "- <текст> (ист: <источник>; <статус>)"`')
+        return 1
+    ident, section = args[0], args[1]
+    root = kbbase.kb_root()
+    team = kbbase.Team(root)
+    path = kbbase.find_object(root, ident)
+    if path is None:
+        print(f"ОШИБКА: {ident} нет в базе")
+        return 1
+    line = args[2] if len(args) == 3 else f"- {args[2]} (ист: {args[3]}; {args[4]})"
+    fact, fixes, problems = kbfacts.check(root, team, line)
+    for f in fixes:
+        print(f)
+    errors = [p for p in problems if p.level == "ОШИБКА"]
+    for p in problems:
+        print(f"{p.level}: {p.message}")
+    if errors or fact is None:
+        print("НЕ ЗАПИСАНО")
+        return 1
+
+    lines = kbbase.read_lines(path)
+    _, body = kbbase.front_matter(lines)
+    secs = {name: (start, end) for name, start, end in kbbase.sections(lines, body)}
+    allowed = FACT_SECTIONS.get(ident.split("-")[0])
+    if section not in secs or (allowed and section not in allowed):
+        names = [n for n in secs if not allowed or n in allowed]
+        print(f"ОШИБКА: в {ident} нет раздела для фактов «{section}». Разделы: {', '.join(names)}")
+        print("НЕ ЗАПИСАНО")
+        return 1
+    start, end = secs[section]
+    last = start
+    for i in range(start + 1, end):
+        if lines[i].strip():
+            last = i
+    new_line = fact.line()
+    numbered = [lines[i] for i in range(start + 1, end) if kbcheck.ITEM.match(lines[i]) and lines[i][0].isdigit()]
+    if numbered:
+        new_line = f"{len(numbered) + 1}. {new_line[2:]}"
+    lines.insert(last + 1, new_line)
+    if last == start:
+        lines.insert(last + 1, "")
+        if last + 3 < len(lines) and lines[last + 3].strip():
+            lines.insert(last + 3, "")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"ЗАПИСАНО: {kbbase.rel(root, path)}, раздел «{section}»:")
+    print(new_line)
+    return 0
+
+
+def git_config(key: str) -> str:
+    r = subprocess.run(["git", "config", key], capture_output=True, text=True)
+    return r.stdout.strip()
+
+
+def cmd_whoami(args: list[str]) -> int:
+    root = kbbase.kb_root()
+    team = kbbase.Team(root)
+    email, name = git_config("user.email"), git_config("user.name")
+    person = team.by_git(email, name)
+    if person is None:
+        print(f"Вас нет в `team.md` (git: {name or '—'} <{email or '—'}>).")
+        print(f"Передайте аналитику строку: | {name or '<Имя>'} | {email or '<почта>'} | <роль> |")
+        return 1
+    print(f"Имя: {person}")
+    print(f"Роли: {team.roles.get(person) or '—'}")
+    return 0
+
+
+COMMANDS = {"check": cmd_check, "fact": cmd_fact, "whoami": cmd_whoami}
+
+
+def main(argv: list[str]) -> int:
+    if not argv or argv[0] in ("-h", "--help", "help") or argv[0] not in COMMANDS:
+        print(__doc__.strip())
+        return 0 if argv and argv[0] in ("-h", "--help", "help") else 1
+    return COMMANDS[argv[0]](argv[1:])
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
