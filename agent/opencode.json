@@ -22,6 +22,8 @@
       "python kb/tools/kb.py step status*": "ask",
       "python3 kb/tools/kb.py take*": "ask",
       "python kb/tools/kb.py take*": "ask",
+      "python3 kb/tools/kb.py notes take*": "ask",
+      "python kb/tools/kb.py notes take*": "ask",
       "python3 kb/tools/kb.py q sort*": "ask",
       "python3 kb/tools/kb.py q close*": "ask",
       "python3 kb/tools/kb.py q out*": "ask",

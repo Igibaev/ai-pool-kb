@@ -22,6 +22,8 @@
     python3 kb/tools/kb.py report morning [--since <ГГГГ-ММ-ДД|хеш>] [--save]   полный утренний отчёт
     python3 kb/tools/kb.py where              где я, что дальше и почему
     python3 kb/tools/kb.py models             какие модели заданы для агентов
+    python3 kb/tools/kb.py notes take PM-XX <логин> <номер> "<Раздел>"   перенести находку в шаг (владелец)
+    python3 kb/tools/kb.py deps               связи шагов → context/process/_deps.md; устаревшие шаги
 """
 from __future__ import annotations
 
@@ -38,6 +40,8 @@ import kbgit  # noqa: E402
 import kbquestions  # noqa: E402
 import kbsteps  # noqa: E402
 import kbreport  # noqa: E402
+import kbnotes  # noqa: E402
+import kbdeps  # noqa: E402
 
 # «Ответ» вопроса пишет `kb q answer` (порция 4): у него служебные строки «Закрыл», «Записан в»
 FACT_SECTIONS = {"PM": kbcheck.STEP_FACTS, "Q": {"Что уже знаем"}}
@@ -72,32 +76,12 @@ def cmd_fact(args: list[str]) -> int:
         print("НЕ ЗАПИСАНО")
         return 1
 
-    lines = kbbase.read_lines(path)
-    _, body = kbbase.front_matter(lines)
-    secs = {name: (start, end) for name, start, end in kbbase.sections(lines, body)}
     allowed = FACT_SECTIONS.get(ident.split("-")[0])
-    if section not in secs or (allowed and section not in allowed):
-        names = [n for n in secs if not allowed or n in allowed]
-        print(f"ОШИБКА: в {ident} нет раздела для фактов «{section}». Разделы: {', '.join(names)}")
+    error = kbfacts.insert(root, path, section, fact.line(), allowed)
+    if error:
+        print(f"ОШИБКА: {error}")
         print("НЕ ЗАПИСАНО")
         return 1
-    start, end = secs[section]
-    last = start
-    for i in range(start + 1, end):
-        if lines[i].strip():
-            last = i
-    new_line = fact.line()
-    numbered = [lines[i] for i in range(start + 1, end) if kbcheck.ITEM.match(lines[i]) and lines[i][0].isdigit()]
-    if numbered:
-        new_line = f"{len(numbered) + 1}. {new_line[2:]}"
-    lines.insert(last + 1, new_line)
-    if last == start:
-        lines.insert(last + 1, "")
-        if last + 3 < len(lines) and lines[last + 3].strip():
-            lines.insert(last + 3, "")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"ЗАПИСАНО: {kbbase.rel(root, path)}, раздел «{section}»:")
-    print(new_line)
     return 0
 
 
@@ -251,6 +235,25 @@ def cmd_models(args: list[str]) -> int:
     return 1 if missing else 0
 
 
+def cmd_notes(args: list[str]) -> int:
+    if len(args) != 5 or args[0] != "take":
+        print('ОШИБКА: нужно `kb notes take PM-XX <логин> <номер> "<Раздел>"`')
+        return 1
+    root = kbbase.kb_root()
+    team = kbbase.Team(root)
+    person = current_person(team)
+    return 1 if person is None else kbnotes.take(root, team, person, *args[1:])
+
+
+def cmd_deps(args: list[str]) -> int:
+    root = kbbase.kb_root()
+    print("Связи шагов пересобраны: context/process/_deps.md" if kbdeps.write(root) else "Связи шагов не изменились")
+    old = kbdeps.stale(root)
+    for line in old:
+        print(f"УСТАРЕЛО: {line}")
+    return 0
+
+
 def cmd_views(args: list[str]) -> int:
     changed = kbquestions.write_views(kbbase.kb_root())
     print(f"Списки пересобраны: {', '.join(changed)}" if changed else "Списки не изменились")
@@ -288,7 +291,8 @@ def cmd_hooks(args: list[str]) -> int:
 COMMANDS = {"check": cmd_check, "fact": cmd_fact, "whoami": cmd_whoami, "commit": cmd_commit,
             "precommit": cmd_precommit, "hooks": cmd_hooks, "similar": cmd_similar, "ask": cmd_ask,
             "q": cmd_q, "views": cmd_views, "step": cmd_step, "take": cmd_take,
-            "report": cmd_report, "where": cmd_where, "models": cmd_models}
+            "report": cmd_report, "where": cmd_where, "models": cmd_models,
+            "notes": cmd_notes, "deps": cmd_deps}
 
 
 def main(argv: list[str]) -> int:

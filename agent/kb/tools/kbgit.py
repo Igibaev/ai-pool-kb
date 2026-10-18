@@ -14,10 +14,11 @@ from pathlib import Path
 
 import kbbase
 import kbcheck
+import kbdeps
+import kbnotes
 import kbquestions
 
 FACT_LINE = re.compile(r"^(?:-|\d+\.)\s+.*\(ист:")
-GENERATED = ("context/process/_deps.md",)     # строителя пока нет — не трогать
 VIEWS = "journal/views/"
 JUNK = re.compile(r"(^|/)(__pycache__/|\.DS_Store$)|\.pyc$")
 
@@ -85,8 +86,10 @@ def forbidden(repo: Path, kb: Path, files: list[tuple[str, str]]) -> list[str]:
             full = repo / path
             if full.exists() and views.get(name) != full.read_text(encoding="utf-8"):
                 problems.append(f"Списки строит инструмент: `{inner}`. Руками не правят — пересоберите: kb views")
-        elif inner.startswith(GENERATED):
-            problems.append(f"Этот файл строит инструмент: `{inner}`. Руками не правят")
+        elif inner == "context/process/_deps.md":
+            full = repo / path
+            if full.exists() and full.read_text(encoding="utf-8") != kbdeps.render(kb):
+                problems.append(f"Связи шагов строит инструмент: `{inner}`. Руками не правят — пересоберите: kb deps")
     return problems
 
 
@@ -173,6 +176,8 @@ def plan(kb: Path, only: list[str], message: str | None, person: str) -> int:
     rebuilt = kbquestions.write_views(kb)
     if rebuilt:
         print(f"Списки вопросов пересобраны: {', '.join(rebuilt)}")
+    if kbdeps.write(kb):
+        print("Связи шагов пересобраны: context/process/_deps.md")
     files = changed_files(repo, kb)
     if only:
         wanted = {str((Path.cwd() / p).resolve()) for p in only}
@@ -181,6 +186,7 @@ def plan(kb: Path, only: list[str], message: str | None, person: str) -> int:
         print("Нечего коммитить: в kb/ нет изменений")
         return 1
     problems = forbidden(repo, kb, files)
+    problems += kbnotes.foreign_notes(kb, kbbase.Team(kb), person, [kb_path(repo, kb, p) for _, p in files])
     rep = kbcheck.run(kb)
     if rep.errors():
         problems.append(f"`kb check` нашёл ошибки: {rep.errors()}. Исправьте их и покажите план заново")

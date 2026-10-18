@@ -10,6 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import kbbase
+import kbdeps
 import kbgit
 import kbquestions
 
@@ -190,6 +191,8 @@ def build(kb: Path, since: str) -> str:
             text.append(f"- {who}: {'; '.join(parts) or 'правки без новых фактов'}")
         text.append("")
 
+    old = kbdeps.stale(kb)
+    text += [f"## Устарело — {len(old)}", ""] + ([f"- {line}" for line in old] or ["Нет."]) + [""]
     text += ["## По людям", "", "| Человек | Коммитов | Шаги | Фактов | Вопросов задал | Ответов | Закрыл |",
              "|---|---|---|---|---|---|---|"]
     for who, p in sorted(people.items()):

@@ -10,6 +10,7 @@ from pathlib import Path
 import kbbase
 import kbcheck
 import kbfacts
+import kbglossary
 
 WHO = kbcheck.WHO_ANSWERS
 SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
@@ -110,8 +111,9 @@ def similarity(a: str, b: str) -> float:
 def similar(root: Path, text: str, limit: int = 5) -> list[tuple[float, str, str]]:
     """Кандидаты: вопросы и факты базы, похожие по словам. Дубль ли это — решает человек."""
     found = []
+    text = kbglossary.expand(root, text)
     for path, lines, head, body in all_questions(root):
-        score = similarity(text, title(lines, body))
+        score = similarity(text, kbglossary.expand(root, title(lines, body)))
         if score >= 0.25:
             found.append((score, head.get("id", path.stem), f"вопрос, {head.get('статус', '')}: {title(lines, body)}"))
     for path in sorted((root / "context" / "process").glob("PM-*.md")):
@@ -119,7 +121,7 @@ def similar(root: Path, text: str, limit: int = 5) -> list[tuple[float, str, str
         ident = path.stem.split("-")[0] + "-" + path.stem.split("-")[1]
         for line in lines:
             if "(ист:" in line:
-                score = similarity(text, line.split("(ист:")[0])
+                score = similarity(text, kbglossary.expand(root, line.split("(ист:")[0]))
                 if score >= 0.3:
                     found.append((score, ident, f"факт: {line.strip()}"))
     found.sort(key=lambda x: -x[0])

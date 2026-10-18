@@ -9,6 +9,7 @@ from pathlib import Path
 
 import kbbase
 import kbcheck
+import kbdeps
 import kbquestions
 
 STATUSES = kbbase.STEP_STATUSES
@@ -294,6 +295,9 @@ def where(root: Path, team: kbbase.Team, person: str) -> int:
         print(f"Ты здесь: своих шагов в работе нет")
         print(f"Дальше: взять шаг — kb take PM-XX. Свободны: {', '.join(free) or 'нет'}")
         print("Почему: шаги не назначают — их берут сами · модель: light")
+    old = [line for line in kbdeps.stale(root) if any(line.startswith(f"{h.get('id')}:") for h, _, _ in mine)]
+    for line in old:
+        print(f"Устарело: {line}")
     if "аналитик" in roles:
         unsorted = [h.get("id") for _, _, h, _ in kbquestions.all_questions(root)
                     if h.get("статус") in ("открыт", "ответ найден") and kbquestions.is_new(h)]

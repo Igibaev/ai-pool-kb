@@ -227,3 +227,29 @@ def check(root: Path, team: kbbase.Team, line: str) -> tuple[Fact | None, list[s
         problems.append(Problem("ПРЕДУПРЕЖДЕНИЕ", "«Как сейчас» и «как будет» — не противоречие. "
                                                  "Намерение пишется в раздел «Как будет»"))
     return fact, fixes, problems
+
+
+def insert(root: Path, path: Path, section: str, line: str, allowed: set[str] | None) -> str | None:
+    """Вставить строку факта в конец раздела. Возвращает текст ошибки или None. Печатает «ЗАПИСАНО»."""
+    lines = kbbase.read_lines(path)
+    head, body = kbbase.front_matter(lines)
+    secs = {name: (start, end) for name, start, end in kbbase.sections(lines, body)}
+    if section not in secs or (allowed and section not in allowed):
+        names = [n for n in secs if not allowed or n in allowed]
+        return f"в {head.get('id', path.stem)} нет раздела для фактов «{section}». Разделы: {', '.join(names)}"
+    start, end = secs[section]
+    last = start
+    for i in range(start + 1, end):
+        if lines[i].strip():
+            last = i
+    numbered = [l for l in lines[start + 1:end] if re.match(r"^\d+\.\s+", l)]
+    new_line = f"{len(numbered) + 1}. {line[2:]}" if numbered and line.startswith("- ") else line
+    lines.insert(last + 1, new_line)
+    if last == start:
+        lines.insert(last + 1, "")
+        if last + 3 < len(lines) and lines[last + 3].strip():
+            lines.insert(last + 3, "")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"ЗАПИСАНО: {kbbase.rel(root, path)}, раздел «{section}»:")
+    print(new_line)
+    return None

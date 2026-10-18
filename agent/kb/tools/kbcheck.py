@@ -9,6 +9,7 @@ from pathlib import Path
 
 import kbbase
 import kbfacts
+import kbglossary
 from kbfacts import Problem
 
 STEP_FACTS = {"Зачем бизнесу", "Вход", "Выход", "Состояния", "Исключения", "Как сейчас"}
@@ -25,6 +26,10 @@ HOW = ("ручной", "автоматизируем", "вне системы")
 NOTE = re.compile(r"^- \[(к спеке|к нарезке|гипотеза|риск)\] .+\(.+, \d{4}-\d{2}-\d{2}\) → дальше: .+")
 ITEM = re.compile(r"^(?:-|\d+\.)\s+")
 MOVED = re.compile(r"\s+·\s+перенесено:.*$")
+# Персональные данные без маски: идентификатор физлица (12–14 цифр), телефон, паспорт
+PD = [(re.compile(r"(?<![\d*])\d{12,14}(?![\d*])"), "идентификатор"),
+      (re.compile(r"(?<![\d*])\+?(?:998|7)[\s(-]*\d{2,3}[\s)-]*\d{3}[\s-]?\d{2}[\s-]?\d{2}(?![\d*])"), "телефон"),
+      (re.compile(r"(?<![A-Za-zА-Яа-я])[A-ZА-Я]{2}\s?\d{7}(?![\d*])"), "паспорт")]
 
 
 class Report:
@@ -171,6 +176,15 @@ def check_language(rep: Report, path: Path) -> None:
             rep.add(path, i + 1, p)
 
 
+def check_pd(rep: Report, path: Path, level: str) -> None:
+    for i, line in enumerate(kbbase.read_lines(path)):
+        for pattern, kind in PD:
+            m = pattern.search(line)
+            if m:
+                rep.add(path, i + 1, Problem(level, f"Похоже на персональные данные ({kind}): «{m.group(0)}». "
+                                                    "Только роли и маски: первые цифры и `***`"))
+
+
 def run(root: Path) -> Report:
     rep = Report(root)
     team = kbbase.Team(root)
@@ -192,6 +206,16 @@ def run(root: Path) -> Report:
     for path in content:
         if path.is_file():
             check_language(rep, path)
+            if path.name != "team.md":
+                check_pd(rep, path, "ОШИБКА")
+    for path in sorted((root / "materials").rglob("*.md")):
+        check_pd(rep, path, "ПРЕДУПРЕЖДЕНИЕ")
+    synonyms, problems = kbglossary.load(root)
+    for p in problems:
+        rep.add(root / "context" / "glossary.md", 0, p)
+    for path in sorted(process.glob("PM-*.md")) + sorted((journal / "questions").glob("Q-*.md")):
+        for n, p in kbglossary.check(root, path, synonyms):
+            rep.add(path, n, p)
     # Язык фактов уже проверен при проверке строк — убираем повторы
     seen, unique = set(), []
     for item in rep.items:
