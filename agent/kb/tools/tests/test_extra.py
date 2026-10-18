@@ -175,6 +175,18 @@ class Links(Base):
         self.assertIn("Связи шагов пересобраны", out)
         self.assertNotIn("руками", path.read_text(encoding="utf-8"))
 
+    def test_L04_hook_stops_hand_edit_of_deps(self):
+        # Человек коммитит сам, мимо `kb commit plan` — хук pre-commit останавливает
+        self.run_kb("deps")
+        subprocess.run(["git", "-C", str(self.tmp), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(self.tmp), "commit", "-qm", "старт"], check=True)
+        path = self.root / "context/process/_deps.md"
+        path.write_text(path.read_text(encoding="utf-8") + "руками\n", encoding="utf-8")
+        subprocess.run(["git", "-C", str(self.tmp), "add", "-A"], check=True)
+        code, out = self.run_kb("precommit")
+        self.assertEqual(code, 1, out)
+        self.assertIn("Связи шагов строит инструмент", out)
+
 
 class Glossary(Base):
     def setUp(self):
