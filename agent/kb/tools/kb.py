@@ -24,6 +24,13 @@
     python3 kb/tools/kb.py models             какие модели заданы для агентов
     python3 kb/tools/kb.py notes take PM-XX <логин> <номер> "<Раздел>"   перенести находку в шаг (владелец)
     python3 kb/tools/kb.py deps               связи шагов → context/process/_deps.md; устаревшие шаги
+    python3 kb/tools/kb.py dec new PM-XX <slug> название="…" боль="…" [зависит="…"]   декомпозит (владелец шага)
+    python3 kb/tools/kb.py dec status PM-XX-NN "<статус>" [--reason "…"]
+    python3 kb/tools/kb.py spec set PM-XX-NN "<ссылка на спеку>"      (владелец декомпозита)
+    python3 kb/tools/kb.py spec accept PM-XX-NN                        (архитектор недели)
+    python3 kb/tools/kb.py spec early PM-XX-NN --reason "…"             ранний срез: код до принятой спеки
+    python3 kb/tools/kb.py package "<роль бизнеса>|всем"               пакет вопросов для бизнеса
+    python3 kb/tools/kb.py package load <файл пакета>                  загрузить ответы из пакета
 """
 from __future__ import annotations
 
@@ -42,6 +49,8 @@ import kbsteps  # noqa: E402
 import kbreport  # noqa: E402
 import kbnotes  # noqa: E402
 import kbdeps  # noqa: E402
+import kbdelivery  # noqa: E402
+import kbpackage  # noqa: E402
 
 # «Ответ» вопроса пишет `kb q answer` (порция 4): у него служебные строки «Закрыл», «Записан в»
 FACT_SECTIONS = {"PM": kbcheck.STEP_FACTS, "Q": {"Что уже знаем"}}
@@ -254,6 +263,61 @@ def cmd_deps(args: list[str]) -> int:
     return 0
 
 
+def split_reason(rest: list[str]) -> tuple[list[str], str | None]:
+    if "--reason" not in rest:
+        return rest, ""
+    i = rest.index("--reason")
+    reason = " ".join(rest[i + 1:]).strip()
+    return rest[:i], (reason or None)
+
+
+def cmd_dec(args: list[str]) -> int:
+    root = kbbase.kb_root()
+    team = kbbase.Team(root)
+    person = current_person(team)
+    if person is None:
+        return 1
+    if args[:1] == ["new"] and len(args) >= 3:
+        return kbdelivery.new(root, person, args[1], args[2], args[3:])
+    if args[:1] == ["status"] and len(args) >= 3:
+        rest, reason = split_reason(args[2:])
+        if reason is None:
+            print('ОШИБКА: после --reason нужна причина')
+            return 1
+        return kbdelivery.status(root, team, person, args[1], " ".join(rest).strip(), reason)
+    print('ОШИБКА: нужно `kb dec new PM-XX <slug> название="…" боль="…"` или `kb dec status PM-XX-NN "<статус>"`')
+    return 1
+
+
+def cmd_spec(args: list[str]) -> int:
+    root = kbbase.kb_root()
+    team = kbbase.Team(root)
+    person = current_person(team)
+    if person is None:
+        return 1
+    sub = args[0] if args else ""
+    if sub == "set" and len(args) >= 3:
+        return kbdelivery.set_spec(root, person, args[1], " ".join(args[2:]))
+    if sub == "accept" and len(args) == 2:
+        return kbdelivery.accept(root, team, person, args[1])
+    if sub == "early" and len(args) >= 2:
+        _, reason = split_reason(args[2:])
+        return kbdelivery.early(root, person, args[1], reason or "")
+    print("ОШИБКА: нужно `kb spec set|accept|early PM-XX-NN …`")
+    return 1
+
+
+def cmd_package(args: list[str]) -> int:
+    root = kbbase.kb_root()
+    team = kbbase.Team(root)
+    if args[:1] == ["load"] and len(args) == 2:
+        return kbpackage.load(root, team, args[1])
+    if len(args) >= 1 and args[0] != "load":
+        return kbpackage.build(root, team, " ".join(args))
+    print('ОШИБКА: нужно `kb package "<роль бизнеса>"`, `kb package всем` или `kb package load <файл>`')
+    return 1
+
+
 def cmd_views(args: list[str]) -> int:
     changed = kbquestions.write_views(kbbase.kb_root())
     print(f"Списки пересобраны: {', '.join(changed)}" if changed else "Списки не изменились")
@@ -292,7 +356,7 @@ COMMANDS = {"check": cmd_check, "fact": cmd_fact, "whoami": cmd_whoami, "commit"
             "precommit": cmd_precommit, "hooks": cmd_hooks, "similar": cmd_similar, "ask": cmd_ask,
             "q": cmd_q, "views": cmd_views, "step": cmd_step, "take": cmd_take,
             "report": cmd_report, "where": cmd_where, "models": cmd_models,
-            "notes": cmd_notes, "deps": cmd_deps}
+            "notes": cmd_notes, "deps": cmd_deps, "dec": cmd_dec, "spec": cmd_spec, "package": cmd_package}
 
 
 def main(argv: list[str]) -> int:

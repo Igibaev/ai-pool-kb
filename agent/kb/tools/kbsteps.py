@@ -174,6 +174,11 @@ def status(root: Path, team: kbbase.Team, person: str, ident: str, new: str, rea
     if new == "Нарезка" and head.get("достаточно для спеки", "—") in ("", "—"):
         print(f"ОШИБКА: в нарезку — после слов владельца «мне достаточно». Команда: python3 kb/tools/kb.py step enough {ident}")
         return 1
+    has_dec = any((root / "delivery").glob(f"{ident}-[0-9][0-9]-*.md")) if (root / "delivery").is_dir() else False
+    if new in ("Приёмка", "Декомпозиты в работе") and i_new > i_old and not has_dec:
+        print(f"ОШИБКА: у {ident} нет декомпозитов. Нарежьте шаг: python3 kb/tools/kb.py dec new {ident} <slug> "
+              'название="…" боль="…"')
+        return 1
     if new == "Сверка с бизнесом":
         blocks = blocking(root, ident)
         if blocks and not reason:

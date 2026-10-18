@@ -15,6 +15,7 @@ STATUSES = ("подтверждено", "оценка", "допущение", "�
 STATUS_HELP = "Статусы: подтверждено, оценка, допущение A-NNN, противоречие"
 FORMAT_HELP = "Нужно: `(ист: <материал:строка или «со слов кто, дата»>; <статус>)`"
 SOURCE_FORMS = ("Формы источника: `materials/<файл>:<строка>`, `materials/<файл>#<лист>!<ячейка>`, "
+                "`journal/packages/<пакет>:<строка>`, "
                 "`со слов <кто>, <ГГГГ-ММ-ДД>`, `Q-NNN`, `D-NNN`")
 
 ENGLISH_STATUS = {"confirmed": "подтверждено", "estimate": "оценка", "assumption": "допущение",
@@ -28,7 +29,7 @@ THINK = re.compile(r"</?think>", re.IGNORECASE)
 SOURCE_START = re.compile(r"\((?:ист|источник|исх|source)\b\.?\s*[:.]?\s*", re.IGNORECASE)
 PAGE_WORDS = re.compile(r"^(materials/[^\s,:#]+)[,\s]+(?:стр\.?|строка|строки|line)\s*(\d+)(?:\s*[-–]\s*(\d+))?$",
                         re.IGNORECASE)
-MATERIAL = re.compile(r"^(materials/[^\s:#,]+)(?::(\d+)(?:\s*[-–]\s*(\d+))?|#(\S+))?(?:,\s*(.*))?$")
+MATERIAL = re.compile(r"^((?:materials|journal/packages)/[^\s:#,]+)(?::(\d+)(?:\s*[-–]\s*(\d+))?|#(\S+))?(?:,\s*(.*))?$")
 OBJECT = re.compile(r"^([QDA]-[\w-]+)(?:,\s*(.*))?$")
 
 

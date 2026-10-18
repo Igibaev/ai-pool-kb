@@ -162,6 +162,25 @@ def check_question(rep: Report, team: kbbase.Team, path: Path) -> None:
             check_fact_section(rep, team, path, lines, start, end)
 
 
+DEC_STATUSES = ("Нарезан", "Спека", "Сборка", "Ревью", "Приёмка", "Готово")
+
+
+def check_decomposite(rep: Report, path: Path) -> None:
+    lines = kbbase.read_lines(path)
+    head, _ = kbbase.front_matter(lines)
+    if head.get("статус") not in DEC_STATUSES:
+        rep.add(path, 0, Problem("ОШИБКА", f"Неизвестный статус декомпозита «{head.get('статус')}». "
+                                           f"Статусы: {', '.join(DEC_STATUSES)}"))
+    accepted = head.get("спека принята", "—")
+    if accepted not in ("", "—") and f"спека принята — {accepted.rsplit(', ', 1)[0]} (kb spec accept)" not in "\n".join(lines):
+        rep.add(path, 0, Problem("ОШИБКА", "Поле «спека принята» ставит только `kb spec accept`"))
+    early = head.get("ранний срез", "—")
+    if early not in ("", "—") and f"причина: {early}" not in "\n".join(lines):
+        rep.add(path, 0, Problem("ОШИБКА", "Поле «ранний срез» ставит только `kb spec early`"))
+    if head.get("статус") in ("Сборка", "Ревью", "Приёмка", "Готово") and accepted in ("", "—") and early in ("", "—"):
+        rep.add(path, 0, Problem("ОШИБКА", "Нет кода без принятой спеки: декомпозит в работе, а спека не принята"))
+
+
 def check_body_facts(rep: Report, team: kbbase.Team, path: Path) -> None:
     """Решения и находки: все пункты списка в теле — факты."""
     lines = kbbase.read_lines(path)
@@ -210,6 +229,8 @@ def run(root: Path) -> Report:
                 check_pd(rep, path, "ОШИБКА")
     for path in sorted((root / "materials").rglob("*.md")):
         check_pd(rep, path, "ПРЕДУПРЕЖДЕНИЕ")
+    for path in sorted((root / "delivery").glob("PM-*-[0-9][0-9]-*.md")) if (root / "delivery").is_dir() else []:
+        check_decomposite(rep, path)
     synonyms, problems = kbglossary.load(root)
     for p in problems:
         rep.add(root / "context" / "glossary.md", 0, p)

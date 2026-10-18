@@ -23,6 +23,9 @@ python3 kb/tools/kb.py where                       штурман: ты здес
 python3 kb/tools/kb.py models                      какие модели заданы (переменные KB_MODEL_*)
 python3 kb/tools/kb.py notes take PM-XX <логин> <номер> "<Раздел>"   перенести находку в шаг (владелец)
 python3 kb/tools/kb.py deps                        связи шагов для роадмапа → context/process/_deps.md; «устарело»
+python3 kb/tools/kb.py dec new|status …            декомпозиты в delivery/
+python3 kb/tools/kb.py spec set|accept|early …     спека; нет кода без принятой спеки; ранний срез
+python3 kb/tools/kb.py package "<роль>"|всем       пакет вопросов для бизнеса; package load <файл> — ответы обратно
 ```
 
 `fact` поправляет близкие формы ввода и пишет «ПОПРАВЛЕНО: …». Ошибка — «НЕ ЗАПИСАНО», файл не меняется.
@@ -41,6 +44,8 @@ tools/
   kbnotes.py         находки не-владельца и их перенос
   kbdeps.py          связи шагов, похожие шаги, «устарело»
   kbglossary.py      глоссарий: синонимы, дубли терминов
+  kbdelivery.py      декомпозиты и спека
+  kbpackage.py       пакет вопросов для бизнеса
   hooks/pre-commit   проверка перед любым коммитом: материалы, .kb/, сгенерированное, kb check
   tests/
     oshibki.md       что инструмент обязан отклонить — каждая строка = тест с тем же номером
@@ -51,6 +56,7 @@ tools/
     test_report.py   отчёт: каждый изменённый файл в отчёте
     test_agents.py   штурман и агенты opencode.json
     test_extra.py    ПД, находки, связи шагов, глоссарий
+    test_delivery.py декомпозиты, спека, пакет
                      все тесты: python3 -m unittest discover -s kb/tools/tests -v
     fixture/         маленькая база (выдуманный продукт) — данные для тестов
   eval/              стенд проверки агента на живой модели (порция 8)

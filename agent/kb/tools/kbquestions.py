@@ -231,8 +231,14 @@ def sort(root: Path, team: kbbase.Team, person: str, ident: str, args: list[str]
     if who is None:
         print(f"ОШИБКА: кто= — одно из: {', '.join(WHO)}")
         return 1
+    role = fields.get("роль", "")
+    if role and role.lower() not in team.business:
+        print(f"ОШИБКА: роли «{role}» нет в `team.md`, раздел «Роли бизнеса»")
+        return 1
     lines, _, _ = load(path)
     set_field(lines, "кто отвечает", who)
+    if role:
+        set_field(lines, "роль бизнеса", role)
     set_field(lines, "рассортировал", f"{person}, {kbbase.today().isoformat()}")
     save(path, lines)
     print(f"РАССОРТИРОВАН: {ident} — кто отвечает: {who}")
