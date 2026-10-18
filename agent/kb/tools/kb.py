@@ -15,6 +15,10 @@
     python3 kb/tools/kb.py q close Q-…        (автор вопроса)
     python3 kb/tools/kb.py q out Q-… Q-… "<причина>"     (аналитик)
     python3 kb/tools/kb.py views              пересобрать списки вопросов
+    python3 kb/tools/kb.py step gaps PM-XX    чего не хватает по критерию глубины
+    python3 kb/tools/kb.py step enough PM-XX  «мне достаточно, чтобы писать спецификацию» — только владелец
+    python3 kb/tools/kb.py step status PM-XX "<статус>" [--reason "…"]
+    python3 kb/tools/kb.py take PM-XX         взять шаг
 """
 from __future__ import annotations
 
@@ -29,6 +33,7 @@ import kbcheck  # noqa: E402
 import kbfacts  # noqa: E402
 import kbgit  # noqa: E402
 import kbquestions  # noqa: E402
+import kbsteps  # noqa: E402
 
 # «Ответ» вопроса пишет `kb q answer` (порция 4): у него служебные строки «Закрыл», «Записан в»
 FACT_SECTIONS = {"PM": kbcheck.STEP_FACTS, "Q": {"Что уже знаем"}}
@@ -162,6 +167,43 @@ def cmd_q(args: list[str]) -> int:
     return 1
 
 
+def cmd_step(args: list[str]) -> int:
+    root = kbbase.kb_root()
+    team = kbbase.Team(root)
+    sub = args[0] if args else ""
+    if sub == "gaps" and len(args) == 2:
+        return kbsteps.gaps(root, args[1])
+    if sub in ("enough", "status") and len(args) >= 2:
+        person = current_person(team)
+        if person is None:
+            return 1
+        if sub == "enough" and len(args) == 2:
+            return kbsteps.enough(root, person, args[1])
+        if sub == "status" and len(args) >= 3:
+            rest = args[2:]
+            reason = ""
+            if "--reason" in rest:
+                i = rest.index("--reason")
+                reason = " ".join(rest[i + 1:]).strip()
+                rest = rest[:i]
+                if not reason:
+                    print('ОШИБКА: после --reason нужна причина: --reason "…"')
+                    return 1
+            return kbsteps.status(root, team, person, args[1], " ".join(rest).strip(), reason)
+    print('ОШИБКА: нужно `kb step gaps|enough PM-XX` или `kb step status PM-XX "<статус>" [--reason "…"]`')
+    return 1
+
+
+def cmd_take(args: list[str]) -> int:
+    if len(args) != 1:
+        print("ОШИБКА: нужно `kb take PM-XX`")
+        return 1
+    root = kbbase.kb_root()
+    team = kbbase.Team(root)
+    person = current_person(team)
+    return 1 if person is None else kbsteps.take(root, team, person, args[0])
+
+
 def cmd_views(args: list[str]) -> int:
     changed = kbquestions.write_views(kbbase.kb_root())
     print(f"Списки пересобраны: {', '.join(changed)}" if changed else "Списки не изменились")
@@ -198,7 +240,7 @@ def cmd_hooks(args: list[str]) -> int:
 
 COMMANDS = {"check": cmd_check, "fact": cmd_fact, "whoami": cmd_whoami, "commit": cmd_commit,
             "precommit": cmd_precommit, "hooks": cmd_hooks, "similar": cmd_similar, "ask": cmd_ask,
-            "q": cmd_q, "views": cmd_views}
+            "q": cmd_q, "views": cmd_views, "step": cmd_step, "take": cmd_take}
 
 
 def main(argv: list[str]) -> int:

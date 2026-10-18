@@ -14,6 +14,10 @@ python3 kb/tools/kb.py similar "<формулировка>"     похожие �
 python3 kb/tools/kb.py ask send <slug> шаг=… кто=… MVP=… блокирует=… откуда="…" вопрос="…"
 python3 kb/tools/kb.py q sort|answer|close|out …   жизнь вопроса — kb/rules/formats.md, раздел 3
 python3 kb/tools/kb.py views                       пересобрать списки вопросов journal/views/
+python3 kb/tools/kb.py step gaps PM-XX             чего не хватает по критерию глубины (подсказка)
+python3 kb/tools/kb.py step enough PM-XX           «мне достаточно» — только владелец
+python3 kb/tools/kb.py step status PM-XX "<статус>" [--reason "…"]
+python3 kb/tools/kb.py take PM-XX                  взять шаг; лимит — в team.md
 ```
 
 `fact` поправляет близкие формы ввода и пишет «ПОПРАВЛЕНО: …». Ошибка — «НЕ ЗАПИСАНО», файл не меняется.
@@ -27,12 +31,14 @@ tools/
   kbcheck.py         kb check
   kbgit.py           kb commit plan / apply, pre-commit
   kbquestions.py     вопросы: ask send, similar, q sort/answer/close/out, списки views
+  kbsteps.py         шаг: step gaps/enough/status, take
   hooks/pre-commit   проверка перед любым коммитом: материалы, .kb/, сгенерированное, kb check
   tests/
     oshibki.md       что инструмент обязан отклонить — каждая строка = тест с тем же номером
     test_kb.py       факты и check
     test_commit.py   коммит, хук, права opencode.json
     test_questions.py вопросы и списки
+    test_steps.py    разбор, «достаточно», статусы, взятие
                      все тесты: python3 -m unittest discover -s kb/tools/tests -v
     fixture/         маленькая база (выдуманный продукт) — данные для тестов
   eval/              стенд проверки агента на живой модели (порция 8)

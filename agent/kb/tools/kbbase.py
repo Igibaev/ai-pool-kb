@@ -103,11 +103,12 @@ class Team:
         self.people: dict[str, str] = {}      # имя → почта или git-имя
         self.roles: dict[str, str] = {}       # имя → роли в пуле
         self.business: set[str] = set()       # роли бизнеса
+        self.head: dict[str, str] = {}        # шапка: архитектор недели, лимит шагов…
         path = root / "team.md"
         if not path.is_file():
             return
         lines = read_lines(path)
-        _, body = front_matter(lines)
+        self.head, body = front_matter(lines)
         secs = sections(lines, body)
         first_end = secs[0][1] if secs else len(lines)
         for _, cells in table_rows(lines, body, first_end):

@@ -242,9 +242,10 @@ class OpenCodePermissions(unittest.TestCase):
         self.assertEqual(self.bash("python3 kb/tools/kb.py commit apply 1a2b3c"), "ask")
         self.assertEqual(self.bash("python3 kb/tools/kb.py ask send q-porog"), "ask")
         self.assertEqual(self.bash("python3 kb/tools/kb.py step enough PM-02"), "ask")
-        for cmd in ("q sort Q-001 кто=бизнес", "q close Q-001", "q out Q-001 причина"):
+        for cmd in ("q sort Q-001 кто=бизнес", "q close Q-001", "q out Q-001 причина",
+                    "step status PM-02 Нарезка", "take PM-05"):
             self.assertEqual(self.bash(f"python3 kb/tools/kb.py {cmd}"), "ask", cmd)
-        for cmd in ("similar долг", "q answer Q-001 x y оценка", "views"):
+        for cmd in ("similar долг", "q answer Q-001 x y оценка", "views", "step gaps PM-02"):
             self.assertEqual(self.bash(f"python3 kb/tools/kb.py {cmd}"), "allow", cmd)
 
     def test_reading_commands_allowed(self):

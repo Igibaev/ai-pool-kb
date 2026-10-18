@@ -93,6 +93,11 @@ def check_step(rep: Report, team: kbbase.Team, path: Path) -> None:
     if enough != "—" and not re.match(r"^.+, \d{4}-\d{2}-\d{2}$", enough):
         rep.add(path, 0, Problem("ОШИБКА", "Поле «достаточно для спеки» — «—» или «<имя>, <ГГГГ-ММ-ДД>». "
                                            "Ставит только `kb step enough`"))
+    elif enough != "—":
+        name, date = enough.rsplit(", ", 1)
+        if f"- {date} достаточно для спеки — {name} (kb step enough)" not in lines:
+            rep.add(path, 0, Problem("ОШИБКА", "Поле «достаточно для спеки» ставит только `kb step enough`. "
+                                               "В «Истории статуса» нет такой записи"))
     names = set()
     for name, start, end in kbbase.sections(lines, body):
         names.add(name)
